@@ -90,7 +90,7 @@
     <ClCompile>
       <Optimization>MaxSpeed</Optimization>
       <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
-      <AdditionalIncludeDirectories>../../../ProjectApollo\src_mfd;../../../ProjectApollo/src_aux;../../../ProjectApollo/src_sys;../../../ProjectApollo/src_lm;../../../ProjectApollo/src_csm;../../../ProjectApollo/src_launch;../../../ProjectApollo/src_saturn;$(OrbiterSdkDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>../../../ProjectApollo/src_aux;../../../ProjectApollo/src_sys;../../../ProjectApollo/src_lm;../../../ProjectApollo/src_csm;../../../ProjectApollo/src_launch;../../../ProjectApollo/src_saturn;$(OrbiterSdkDir)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions);_CRT_SECURE_NO_WARNINGS</PreprocessorDefinitions>
       <StringPooling>true</StringPooling>
       <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
@@ -120,12 +120,11 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\src\GroundElapsedTimeMFD.h" />
     <ClInclude Include="..\..\src\GroundElapsedTimeCommon.h" />
     <ClInclude Include="..\..\src\GroundElapsedTimeExport.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\src\GroundElapsedTimeMFD.cpp" />
+    <ClCompile Include="..\..\src\GroundElapsedTimePlugin.cpp" />
     <ClCompile Include="..\..\src\GroundElapsedTimeCommon.cpp" />
     <ClCompile Include="..\..\src\GroundElapsedTimeExport.cpp" />
   </ItemGroup>

@@ -1,132 +1,53 @@
-# GroundElapsedTime MFD (for NASSP / Orbiter)
+# GroundElapsedTime addon
 
-This is a small "MFD" (multi-function display) addon for the [Orbiter space
-flight simulator](http://orbit.medphys.ucl.ac.uk/), built specifically to
-work alongside [NASSP](https://github.com/orbiternassp/NASSP) (the Project
-Apollo addon for Orbiter).
+This addon reads NASSP's Project Apollo mission-time logic and writes the
+current Ground Elapsed Time (GET) to `GroundElapsedTime.txt` in the Orbiter
+installation folder. It is intended for another program, script, or
+transcript tool to read while a NASSP simulation is running.
 
-It shows one thing: **Ground Elapsed Time (GET)**, also called Mission
-Elapsed Time (MET) - basically a stopwatch that starts at zero when an
-Apollo mission lifts off. It also writes that same value out to a small
-text file once a second, so a separate program (not part of Orbiter at all)
-can read it too - for example, to play back a mission transcript in sync
-with what's happening in the simulator.
+The file contains two lines generated from the same signed mission-time
+value:
 
-If you've never built a Visual Studio project before, don't worry - every
-step below is spelled out.
+```text
+3:15:24
+00 03 15 24
+```
 
-## What makes this different from just using NASSP's own MFD?
+The first line uses `H:MM:SS`. The second uses `DD HH MM SS`, with days
+increasing after each 24 hours. A five-second countdown is written as:
 
-NASSP already ships an MFD (called "Project Apollo") that can show GET,
-among many other things. This addon is a much simpler, standalone MFD that
-*only* shows GET, using the exact same logic and the exact same NASSP
-vessel classes (`Saturn`, `LEM`, `SIVB`, `Crawler`, `MCC`) that NASSP's own
-MFD uses internally - so the number is always identical to what NASSP
-itself considers the mission time to be. Because of that, this addon must
-be built the same way NASSP itself is built (32-bit/"Win32", not 64-bit),
-and it only works when NASSP is installed - see "Requirements" below.
+```text
+-0:00:05
+-00 00 00 05
+```
 
-## What you get
+The time source follows NASSP's Project Apollo logic: S-IVB time is preferred
+when focused; otherwise MCC time is used, with Saturn, Crawler, and LEM as
+pre-liftoff fallbacks. Unsupported vessels produce two zero lines.
 
-1. **An MFD mode called "Ground Elapsed Time"** with a button labeled `GET`.
-   Select it on any Saturn, LEM, S-IVB, or Crawler vessel and it shows the
-   mission time as `H:MM:SS` (a leading `-` means the countdown is still
-   before liftoff).
-2. **A text file, `GroundElapsedTime.txt`**, written directly in your main
-   Orbiter folder (right next to `Orbiter.exe`), overwritten about once
-   every second of simulation time. It contains two lines, both generated
-   from the same signed mission-time value:
+## Build requirements
 
-   ```
-   3:14:07
-   00 03 14 07
-   ```
+- NASSP's Orbiter 2016 source tree and Project Apollo headers
+- Visual Studio with the v141 x86/x64 C++ build tools
+- The matching 32-bit Orbiter SDK
+- A Win32/Release build
 
-   The first line is signed `H:MM:SS`. The second line is signed
-   `DD HH MM SS`: days, hours, minutes, and seconds, with days continuing
-   beyond 24 hours. Before liftoff, a five-second countdown is represented
-   as `-0:00:05` and `-00 00 00 05`; the minus sign belongs to the complete
-   value, not to each field. If nothing supported is currently focused, both
-   lines are zero.
+Set `OrbiterSdkDir` near the top of
+`Build\VC2017\GroundElapsedTime.vcxproj` to your local x86 SDK folder.
+Do not use the x64 SDK for this build.
 
-## Requirements
+Open the NASSP solution, select **Release | Win32**, and build the
+`GroundElapsedTime` project. The resulting DLL is written to the configured
+`Modules\Plugin` output folder. Place it in the 32-bit Orbiter installation
+that runs NASSP.
 
-- Microsoft Visual Studio 2017 or newer (NASSP's own build instructions
-  ask for the same thing).
-- A working copy of Orbiter with NASSP already installed and building
-  successfully. This addon's code directly includes NASSP's own C++
-  header files (`saturn.h`, `LEM.h`, etc.) from
-  `Orbitersdk/samples/ProjectApollo/`, so it must live inside the same
-  NASSP source tree. The project is configured for the matching x86 SDK at
-  `D:\orbiter\releases\Orbiter-x86\Orbitersdk`:
-  - headers: `D:\orbiter\releases\Orbiter-x86\Orbitersdk\include`
-  - libraries: `D:\orbiter\releases\Orbiter-x86\Orbitersdk\lib`
+## Files
 
-  If your SDK is in a different folder, open
-  `Build\VC2017\GroundElapsedTime.vcxproj` in a text editor and change the
-  `OrbiterSdkDir` value near the top. Do not use the beta90 or x64 SDK for
-  this Win32 build.
-- This must be built as **Win32 (32-bit)**, in the **Release** (or Debug)
-  configuration - NOT x64. All of NASSP (Saturn, LEM, MCC, SIVB, and the
-  existing Project Apollo MFD) is 32-bit only today, so this addon has to
-  match that exactly to be able to read their internal mission-time values
-  safely. A 64-bit build would not be compatible with a 32-bit NASSP
-  installation at all.
+- `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
+  formatting
+- `src\GroundElapsedTimeExport.cpp/.h` - once-per-simulation-second file
+  output
+- `Build\VC2017\GroundElapsedTime.vcxproj` - Visual Studio project
 
-## How to build it
-
-1. Open `Orbitersdk/samples/ProjectApollo/ProjectApollo2017.sln` in Visual
-   Studio (this is the same solution file NASSP itself uses - this addon
-   has been added to it as one more project, called "GroundElapsedTime").
-2. At the top of Visual Studio, set the configuration dropdown to
-   **Release** and the platform dropdown to **Win32** (do not pick x64).
-3. Confirm that the project file's `OrbiterSdkDir` points to the complete
-   x86 SDK folder described above.
-4. In the Solution Explorer panel, right-click the **GroundElapsedTime**
-   project and choose **Build** (or just build the whole solution with
-   *Build > Build Solution* if you want everything, including NASSP
-   itself, rebuilt).
-4. If it builds successfully, you'll get
-   `GroundElapsedTime.dll` inside your Orbiter installation's
-   `Modules\Plugin\` folder automatically (the project is already set up
-   to put it there directly - no manual copying needed if your NASSP
-   source tree lives inside your actual Orbiter folder, which is the usual
-   NASSP setup).
-
-## How to install it (if you got the DLL some other way)
-
-If you (or someone else) already built `GroundElapsedTime.dll` and just
-want to install it:
-
-1. Copy `GroundElapsedTime.dll` into your Orbiter installation's
-   `Modules\Plugin\` folder (the same folder where NASSP's own
-   `ProjectApolloMFD.dll` lives).
-2. Start Orbiter, load any NASSP scenario with a Saturn/LEM/S-IVB/Crawler.
-3. Open any MFD (e.g. left MFD), press the **"Sel"** button, and keep
-   pressing it (or use the MFD mode selection key) until **"Ground Elapsed
-   Time"** appears.
-4. To see the exported file, just open `GroundElapsedTime.txt` (in your
-   main Orbiter folder, next to `Orbiter.exe`) in Notepad while the
-   simulation is running - the numbers should update roughly once a second.
-
-## Files in this folder
-
-- `src/GroundElapsedTimeMFD.h` / `.cpp` - the on-screen MFD itself.
-- `src/GroundElapsedTimeCommon.h` / `.cpp` - shared logic for "given a
-  vessel, what is its current Ground Elapsed Time?", used by both the MFD
-  and the file-export feature so they can never disagree with each other.
-- `src/GroundElapsedTimeExport.h` / `.cpp` - the once-a-second file-export
-  feature.
-- `Build/VC2017/GroundElapsedTime.vcxproj` - the Visual Studio project file.
-
-## Notes / limitations
-
-- This first version only exports to a file. A network-based option (so
-  another program could read GET without touching a file on disk) was
-  considered but intentionally left out for now, to keep this first
-  version as simple and easy to debug as possible.
-- Every part of the GET calculation itself is copied from NASSP's own
-  proven code (`ProjectApolloMFD.cpp`'s "Draw mission time" section and
-  `ProjectApolloChecklistMFD.cpp`'s `DisplayMissionElapsedTime()`), so it
-  should behave identically to what NASSP's existing "Project Apollo" MFD
-  already shows.
+This repository does not include the Orbiter SDK, NASSP source, compiled
+libraries, or generated build outputs.
