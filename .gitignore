@@ -1,0 +1,23 @@
+# Visual Studio build outputs
+*.obj
+*.pdb
+*.exp
+*.lib
+*.log
+*.tlog
+*.idb
+*.ilk
+*.sbr
+*.pch
+*.aps
+
+# Build folders
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+
+# User-specific
+*.user
+*.suo
+.vs/
