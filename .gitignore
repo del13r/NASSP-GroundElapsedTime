@@ -21,3 +21,6 @@
 *.user
 *.suo
 .vs/
+# Downloaded dependencies and build output
+/.deps/
+/build-output/
