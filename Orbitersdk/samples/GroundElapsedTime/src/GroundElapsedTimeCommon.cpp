@@ -155,20 +155,3 @@ void FormatGroundElapsedTimeHMS(double totalSeconds, char *buffer, int bufferSiz
 		buffer[bufferSize - 1] = '\0';
 }
 
-void FormatGroundElapsedTimeDays(double totalSeconds, char *buffer, int bufferSize)
-{
-	long seconds = (long)totalSeconds;
-	long magnitude = (seconds < 0) ? -seconds : seconds;
-	long days = magnitude / 86400;
-	long hours = (magnitude / 3600) % 24;
-	long minutes = (magnitude / 60) % 60;
-	long remainder = magnitude % 60;
-
-	if (seconds < 0)
-		sprintf(buffer, "-%02ld %02ld %02ld %02ld", days, hours, minutes, remainder);
-	else
-		sprintf(buffer, "%02ld %02ld %02ld %02ld", days, hours, minutes, remainder);
-
-	if (bufferSize > 0)
-		buffer[bufferSize - 1] = '\0';
-}

@@ -1,14 +1,11 @@
 /***************************************************************************
   This file is part of the GroundElapsedTime MFD addon for NASSP.
 
-  This header declares one small, shared helper function that both the
-  on-screen MFD (GroundElapsedTimeMFD.cpp) and the background file-export
-  feature (GroundElapsedTimeExport.cpp) use to answer the same question:
+  This header declares one small, shared helper function used by the named-pipe
+  exporter (GroundElapsedTimeExport.cpp) to answer the same question:
   "for this vessel, what is the current Ground Elapsed Time, in seconds?"
 
-  Keeping this logic in exactly one place means the number shown on the MFD
-  screen and the number written to GroundElapsedTime.txt can never
-  disagree with each other.
+  Keeping this logic in exactly one place means the pipe value follows exactly the NASSP rules below.
   ***************************************************************************/
 
 #ifndef __GROUNDELAPSEDTIMECOMMON_H
@@ -37,10 +34,10 @@
 // an "Unsupported vessel" message instead of a meaningless number.
 bool ComputeGroundElapsedTime(VESSEL *vessel, double &outSeconds);
 
-// Format the same mission-time value in the two text forms used by this
-// addon. Both functions truncate the value to whole seconds in the same way,
-// preserve a negative countdown sign, and write a null-terminated string.
+// Formats mission time as H:MM:SS (truncated to whole seconds, negative
+// countdown sign preserved) into a null-terminated string.
 void FormatGroundElapsedTimeHMS(double totalSeconds, char *buffer, int bufferSize);
-void FormatGroundElapsedTimeDays(double totalSeconds, char *buffer, int bufferSize);
 
 #endif // !__GROUNDELAPSEDTIMECOMMON_H
+
+

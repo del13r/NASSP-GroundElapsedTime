@@ -1,37 +1,28 @@
 /***************************************************************************
-  This file is part of the GroundElapsedTime MFD addon for NASSP.
+  GroundElapsedTime named-pipe exporter.
 
-  This header declares the three small functions that make up the
-  "export GET to a text file" feature described in this addon's README:
-  once per second of simulation time, we write the current Ground Elapsed
-  Time into a plain text file, GroundElapsedTime.txt, sitting right next
-  to Orbiter.exe. Another program (completely separate from Orbiter) can
-  then watch that file and use it however you like - for example, to play
-  back a mission transcript in sync with the simulation.
+  Publishes the current focused-vessel Ground Elapsed Time and Orbiter time
+  acceleration on the local named pipe \\.\pipe\GroundElapsedTime. Each
+  update is one complete pipe message: two ASCII lines, each ended by '\n':
 
-  These three functions are called from GroundElapsedTimeMFD.cpp's
-  opcDLLInit/opcDLLExit/opcPreStep, which are the standard Orbiter plugin
-  entry points (see the comments there for more on what those do).
+      3:15:24\n
+      10\n
+
+  See the addon README for lifecycle, cadence and client examples.
   ***************************************************************************/
 
 #ifndef __GROUNDELAPSEDTIMEEXPORT_H
 #define __GROUNDELAPSEDTIMEEXPORT_H
 
-// Called once, when the DLL is first loaded by Orbiter. Resets our
-// "when did we last write the file" bookkeeping.
+// Starts the background pipe server thread (called from opcDLLInit).
 void GroundElapsedTimeExportInit();
 
-// Called once, when the DLL is being unloaded by Orbiter. Nothing to
-// clean up today (we open and close the file fresh each time we write
-// it), but kept symmetrical with GroundElapsedTimeExportInit() in case
-// that changes later.
+// Stops the pipe server thread and releases all handles (opcDLLExit).
 void GroundElapsedTimeExportExit();
 
-// Called once per simulation timestep (from opcPreStep). "simt" is the
-// current simulation time, in seconds, since Orbiter started the
-// scenario - NOT the same thing as Ground Elapsed Time, just Orbiter's
-// own clock used for pacing. We use it only to decide "has at least one
-// second of simulation time gone by since we last wrote the file?".
+// Called every simulation step from the Orbiter thread. Never blocks on pipe
+// I/O; it only hands the latest message to the worker thread when it changes
+// or at least once per second of wall-clock time.
 void GroundElapsedTimeExportStep(double simt);
 
 #endif // !__GROUNDELAPSEDTIMEEXPORT_H

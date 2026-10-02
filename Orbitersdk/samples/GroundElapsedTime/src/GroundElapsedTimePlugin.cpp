@@ -1,8 +1,8 @@
 /***************************************************************************
-  GroundElapsedTime file-export plugin entry points.
+  GroundElapsedTime named-pipe plugin entry points.
 
   This file deliberately registers no visible MFD mode. It only starts the
-  once-per-simulation-second GroundElapsedTime.txt exporter.
+  GroundElapsedTime named-pipe exporter.
   ***************************************************************************/
 
 #include "Orbitersdk.h"
@@ -22,3 +22,4 @@ DLLCLBK void opcPreStep(double simt, double simdt, double mjd)
 {
 	GroundElapsedTimeExportStep(simt);
 }
+

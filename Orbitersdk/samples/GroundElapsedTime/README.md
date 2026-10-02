@@ -1,29 +1,59 @@
 # GroundElapsedTime addon
 
-This addon reads NASSP's Project Apollo mission-time logic and writes the
-current Ground Elapsed Time (GET) to `GroundElapsedTime.txt` in the Orbiter
-installation folder. It is intended for another program, script, or
-transcript tool to read while a NASSP simulation is running.
+This addon reads NASSP's Project Apollo mission-time logic and publishes the
+current Ground Elapsed Time (GET) and Orbiter's time acceleration on a local
+Windows named pipe, for another program (transcript tool, script, overlay) to
+read while a NASSP simulation is running. It no longer writes any file.
 
-The file contains two lines generated from the same signed mission-time
-value:
+## Pipe interface
+
+- **Pipe name:** `\\.\pipe\GroundElapsedTime` (local machine only; remote
+  clients are rejected). The plugin is the server; your program is the client.
+- **Payload:** each update is one complete pipe message (a single write on a
+  message-mode pipe) containing exactly two ASCII lines, each ended by `\n`:
 
 ```text
 3:15:24
-00 03 15 24
+10
 ```
 
-The first line uses `H:MM:SS`. The second uses `DD HH MM SS`, with days
-increasing after each 24 hours. A five-second countdown is written as:
+  1. GET as `H:MM:SS` (hours are not capped at 24; a countdown such as five
+     seconds before liftoff is `-0:00:05`).
+  2. Current Orbiter time acceleration (`oapiGetTimeAcceleration`), in plain
+     decimal with `.` as separator and no trailing zeros: `1`, `10`, `0.5`.
 
-```text
--0:00:05
--00 00 00 05
+- **Source of GET:** the focused vessel, using NASSP's logic: S-IVB time is
+  preferred when focused; otherwise MCC time is used, with Saturn, Crawler and
+  LEM as pre-liftoff fallbacks. Unsupported vessels give `0:00:00`.
+- **Cadence:** a new message is sent immediately whenever either line changes
+  (including time acceleration changes), and otherwise at least once per
+  second of real (wall-clock) time, so values stay fresh while paused or when
+  acceleration changes. A client that connects receives the latest value
+  immediately.
+- **Never blocks Orbiter:** the simulation thread only hands the value to a
+  background thread, which does all pipe I/O asynchronously.
+
+### Lifecycle and reconnect
+
+- The pipe appears when Orbiter loads the plugin and is removed when it exits.
+  If it does not exist yet, keep retrying the connection.
+- One client at a time. If you disconnect (or stop reading for more than
+  about 1 second so the write stalls), the plugin drops that connection and
+  waits for the next client. If Orbiter exits, your read ends/fails; reconnect
+  in a loop. Read continuously: a message is one `Read` in message mode.
+- If another program already owns the pipe name, the plugin retries every
+  second and does not disturb it.
+
+### Try it (PowerShell)
+
+With Orbiter running a scenario, run from this folder:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Read-GroundElapsedTime.ps1
 ```
 
-The time source follows NASSP's Project Apollo logic: S-IVB time is preferred
-when focused; otherwise MCC time is used, with Saturn, Crawler, and LEM as
-pre-liftoff fallbacks. Unsupported vessels produce two zero lines.
+It prints lines such as `GET=3:15:24  acceleration=10x`. The essence in your
+own code is: connect a `NamedPipeClientStream('.', 'GroundElapsedTime', 'In')`, `Read` into a buffer, split the ASCII text on `\n`, and use the **last two lines**. A byte-mode reader (the .NET default; a read-only client cannot switch to message mode) may receive several queued updates joined together, and the newest is last.
 
 ## Build (self-contained, no absolute paths)
 
@@ -74,18 +104,23 @@ Building does not touch any Orbiter installation. Orbiter and NASSP must
 already be installed (32-bit Orbiter running NASSP). Copy
 `build-output\Modules\Plugin\GroundElapsedTime.dll` into that installation's
 `Modules\Plugin\` folder, then enable **GroundElapsedTime** in the Orbiter
-launchpad's *Modules* tab. `GroundElapsedTime.txt` is written to the Orbiter
-installation folder while a simulation runs.
+launchpad's *Modules* tab. The pipe is served while Orbiter runs.
 
 ## Files
 
 - `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
   formatting
-- `src\GroundElapsedTimeExport.cpp/.h` - once-per-simulation-second file
-  output
+- `src\GroundElapsedTimeExport.cpp/.h` - named-pipe server (worker thread)
+- `Read-GroundElapsedTime.ps1` - sample pipe client
+- `Read-GroundElapsedTime.ps1` - sample pipe client
 - `Build\VC2017\GroundElapsedTime.vcxproj` - Visual Studio project
 - `..\..\..\GroundElapsedTime.sln`, `..\..\..\setup-deps.ps1` - solution and
   dependency setup at the repository root
 
 This repository does not include the Orbiter SDK, NASSP source, compiled
 libraries, or generated build outputs.
+
+
+
+
+
