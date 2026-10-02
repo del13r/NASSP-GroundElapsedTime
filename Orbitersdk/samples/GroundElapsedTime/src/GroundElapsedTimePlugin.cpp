@@ -5,6 +5,9 @@
   GroundElapsedTime named-pipe exporter.
   ***************************************************************************/
 
+// Required: makes OrbiterAPI.h export ModuleDate(), which Orbiter beta90 uses
+// to recognise and log a plugin module. Define it in this one file only.
+#define ORBITER_MODULE
 #include "Orbitersdk.h"
 #include "GroundElapsedTimeExport.h"
 

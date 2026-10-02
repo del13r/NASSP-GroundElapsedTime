@@ -4,7 +4,12 @@
   Nothing is installed outside this repository.
 #>
 [CmdletBinding()]
-param([switch]$Force)
+param(
+    [switch]$Force,
+    # Path to a matching Orbiter beta90 (API 190914) 32-bit Orbitersdk folder.
+    # Only needed the first time; it is copied into .deps\OrbiterSDK.
+    [string]$OrbiterSdkSource
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -13,8 +18,6 @@ $NasspRepo   = 'https://github.com/orbiternassp/NASSP.git'
 $NasspTag    = 'NASSP-V8.0-Beta-Orbiter2016-2641'
 $NasspCommit = '606aa359ebdf4c920336871f90f742035ec65304'
 
-$OrbiterUrl    = 'https://github.com/orbitersim/orbiter/releases/download/2024/Orbiter-x86.zip'
-$OrbiterSha256 = '5475F83EC66F0653198A7404CC58933EB10F2C2F50FE8F6C1EB69799D1765DD0'
 # -----------------------------------------------------------------------------
 
 $root = $PSScriptRoot
@@ -39,42 +42,34 @@ $head = git -C $nassp rev-parse HEAD
 if ($head -ne $NasspCommit) { throw "NASSP is at $head, expected $NasspCommit" }
 Write-Host "NASSP source OK ($NasspTag, $NasspCommit)"
 
-# --- Orbiter SDK (headers + import libs from the official x86 release) ------
+# --- Orbiter SDK (copied from a local Orbiter beta90 install, never downloaded)
+# The addon must be built against the same SDK as the Orbiter that loads it
+# (beta90, API 190914). Orbiter 2024 SDK headers/libs are NOT compatible.
 $sdk = Join-Path $sdkRoot 'Orbitersdk'
-$sdkOk = (Test-Path (Join-Path $sdk 'include\Orbitersdk.h')) -and
-         (Test-Path (Join-Path $sdk 'lib\Orbiter.lib')) -and
-         (Test-Path (Join-Path $sdkRoot 'sdk.sha256'))
-if ($Force -or -not $sdkOk) {
-    $zip = Join-Path $deps 'Orbiter-x86.zip'
-    if (-not (Test-Path $zip) -or
-        (Get-FileHash $zip -Algorithm SHA256).Hash -ne $OrbiterSha256) {
-        Write-Host "Downloading Orbiter 2024 x86 (~360 MB) ..."
-        Invoke-WebRequest -Uri $OrbiterUrl -OutFile $zip -UseBasicParsing
-    }
-    $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
-    if ($actual -ne $OrbiterSha256) {
-        Remove-Item $zip
-        throw "Orbiter zip hash mismatch: $actual (expected $OrbiterSha256)"
+$manifest = Join-Path $sdkRoot 'sdk.manifest'
+$needed = 'include\Orbitersdk.h','include\OrbiterAPI.h','lib\Orbiter.lib','lib\Orbitersdk.lib'
+if ($OrbiterSdkSource) {
+    $src = (Resolve-Path $OrbiterSdkSource).Path
+    if (Test-Path (Join-Path $src 'Orbitersdk\include')) { $src = Join-Path $src 'Orbitersdk' }
+    foreach ($p in $needed) {
+        if (-not (Test-Path (Join-Path $src $p))) { throw "Missing $p in $src" }
     }
     if (Test-Path $sdkRoot) { Remove-Item -Recurse -Force $sdkRoot }
-    New-Item -ItemType Directory -Force $sdkRoot | Out-Null
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $z = [IO.Compression.ZipFile]::OpenRead($zip)
-    try {
-        foreach ($e in $z.Entries) {
-            if ($e.FullName -notmatch '^Orbitersdk/(include|lib|XRSound)/' -or
-                $e.FullName.EndsWith('/')) { continue }
-            $dest = Join-Path $sdkRoot $e.FullName
-            New-Item -ItemType Directory -Force (Split-Path $dest) | Out-Null
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($e, $dest, $true)
-        }
-    } finally { $z.Dispose() }
-    Set-Content (Join-Path $sdkRoot 'sdk.sha256') $OrbiterSha256
-    Remove-Item $zip
+    New-Item -ItemType Directory -Force $sdk | Out-Null
+    foreach ($d in 'include','lib') {
+        Copy-Item -Recurse -Force (Join-Path $src $d) (Join-Path $sdk $d)
+    }
+    $lines = foreach ($p in $needed) {
+        '{0}  {1}' -f (Get-FileHash (Join-Path $sdk $p) -Algorithm SHA256).Hash, $p
+    }
+    Set-Content $manifest $lines
 }
-foreach ($p in 'include\Orbitersdk.h','lib\Orbiter.lib','lib\Orbitersdk.lib') {
-    if (-not (Test-Path (Join-Path $sdk $p))) { throw "Missing $p in Orbiter SDK" }
+foreach ($p in $needed) {
+    if (-not (Test-Path (Join-Path $sdk $p))) {
+        throw "Orbiter SDK not found in .deps. Re-run with -OrbiterSdkSource <path to your Orbiter beta90 Orbitersdk folder>"
+    }
 }
-Write-Host "Orbiter SDK OK (Orbiter 2024 x86)"
+Write-Host "Orbiter SDK OK (copied from local install). SHA-256 manifest:"
+Get-Content $manifest | ForEach-Object { Write-Host "  $_" }
 Write-Host "Done. Open GroundElapsedTime.sln and build Release | Win32."
 

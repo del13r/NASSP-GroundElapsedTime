@@ -81,11 +81,10 @@ This populates the git-ignored `.deps\` folder with pinned versions:
 | Dependency | Source | Pin |
 | --- | --- | --- |
 | NASSP source (`Orbitersdk\samples\ProjectApollo`, needed because the addon uses NASSP's internal vessel classes) | `https://github.com/orbiternassp/NASSP.git` | tag `NASSP-V8.0-Beta-Orbiter2016-2641`, commit `606aa359ebdf4c920336871f90f742035ec65304` |
-| Orbiter SDK headers and 32-bit libs | `https://github.com/orbitersim/orbiter/releases/download/2024/Orbiter-x86.zip` | Orbiter 2024 release, SHA-256 `5475F83EC66F0653198A7404CC58933EB10F2C2F50FE8F6C1EB69799D1765DD0` |
+| Orbiter beta90 SDK headers and 32-bit libs | copied from your local install via `-OrbiterSdkSource` | no download; hashes in `sdk.manifest` |
 
-Results: `.deps\NASSP\` and `.deps\OrbiterSDK\Orbitersdk\{include,lib,XRSound}`.
-These files are downloaded, never committed. To change versions, edit the
-pins at the top of `setup-deps.ps1`. Re-run with `-Force` to re-download.
+Results: `.deps\NASSP\` and `.deps\OrbiterSDK\Orbitersdk\{include,lib}`.
+The NASSP source is downloaded, never committed. Re-run with `-Force` to re-clone it.
 
 ### 3. Build
 
@@ -104,14 +103,16 @@ Building does not touch any Orbiter installation. Orbiter and NASSP must
 already be installed (32-bit Orbiter running NASSP). Copy
 `build-output\Modules\Plugin\GroundElapsedTime.dll` into that installation's
 `Modules\Plugin\` folder, then enable **GroundElapsedTime** in the Orbiter
-launchpad's *Modules* tab. The pipe is served while Orbiter runs.
+launchpad's *Modules* tab. A correctly loaded plugin logs a line such as
+`Module GroundElapsedTime.dll .. [Build ..., API 190914]` in `Orbiter.log`.
+Keep only one copy: delete any stale `Modules\GroundElapsedTime.dll` (root of
+`Modules`) so it cannot be confused with `Modules\Plugin\GroundElapsedTime.dll`. The pipe is served while Orbiter runs.
 
 ## Files
 
 - `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
   formatting
 - `src\GroundElapsedTimeExport.cpp/.h` - named-pipe server (worker thread)
-- `Read-GroundElapsedTime.ps1` - sample pipe client
 - `Read-GroundElapsedTime.ps1` - sample pipe client
 - `Build\VC2017\GroundElapsedTime.vcxproj` - Visual Studio project
 - `..\..\..\GroundElapsedTime.sln`, `..\..\..\setup-deps.ps1` - solution and
