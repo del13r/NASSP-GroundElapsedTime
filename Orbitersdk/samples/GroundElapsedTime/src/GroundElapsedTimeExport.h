@@ -22,7 +22,7 @@ void GroundElapsedTimeExportExit();
 
 // Called every simulation step from the Orbiter thread. Never blocks on pipe
 // I/O; it only hands the latest message to the worker thread when it changes
-// or at least once per second of wall-clock time.
+// or at least once per 100 ms of wall-clock time.
 void GroundElapsedTimeExportStep(double simt);
 
 #endif // !__GROUNDELAPSEDTIMEEXPORT_H

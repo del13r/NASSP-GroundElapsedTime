@@ -3,7 +3,7 @@
 
   Threading model
   - Orbiter's simulation thread only calls GroundElapsedTimeExportStep().
-    It formats a tiny ASCII message and, when it changed (or once per second
+    It formats a tiny ASCII message and, when it changed (or every 100 ms
     of wall-clock time), copies it into a shared slot under a critical
     section held only for a memcpy, then signals an event. It never performs
     pipe I/O and never waits for a client.
@@ -26,7 +26,7 @@ static const char *PIPE_NAME = "\\\\.\\pipe\\GroundElapsedTime";
 static const DWORD PIPE_BUFFER_BYTES = 4096;
 static const DWORD WRITE_TIMEOUT_MS = 1000;
 static const DWORD RETRY_CREATE_MS = 1000;
-static const ULONGLONG REPUBLISH_INTERVAL_MS = 1000;
+static const ULONGLONG REPUBLISH_INTERVAL_MS = 100;
 static const size_t MESSAGE_MAX = 128;
 
 static CRITICAL_SECTION g_lock;

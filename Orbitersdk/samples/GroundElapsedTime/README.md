@@ -26,10 +26,12 @@ read while a NASSP simulation is running. It no longer writes any file.
   preferred when focused; otherwise MCC time is used, with Saturn, Crawler and
   LEM as pre-liftoff fallbacks. Unsupported vessels give `0:00:00`.
 - **Cadence:** a new message is sent immediately whenever either line changes
-  (including time acceleration changes), and otherwise at least once per
-  second of real (wall-clock) time, so values stay fresh while paused or when
-  acceleration changes. A client that connects receives the latest value
-  immediately.
+  (including time acceleration changes), and otherwise every 100 ms of real
+  (wall-clock) time (10 Hz). A client that connects receives the latest value
+  immediately. GET is formatted to whole seconds, so 10 Hz republishes provide
+  fresh delivery without increasing the value's one-second resolution. The
+  simulation-step callback drives this cadence: when Orbiter runs below 10
+  steps per second, publication is limited by its step rate.
 - **Never blocks Orbiter:** the simulation thread only hands the value to a
   background thread, which does all pipe I/O asynchronously.
 
@@ -63,8 +65,8 @@ sibling NASSP or Orbiter folder, and nothing is written outside the repo.
 ### 1. Prerequisites
 
 - Windows with Visual Studio (2019/2022/2026) and the **Desktop development
-  with C++** workload, plus the **MSVC v141 (VS 2017) x86/x64 build tools**
-  component (the project uses the v141 toolset).
+  with C++** workload, plus the **MSVC v145 x86/x64 build tools** component
+  (the project uses the v145 toolset).
 - Git on your `PATH`.
 - About 1 GB of free disk space for the downloads.
 
@@ -120,7 +122,6 @@ Keep only one copy: delete any stale `Modules\GroundElapsedTime.dll` (root of
 
 This repository does not include the Orbiter SDK, NASSP source, compiled
 libraries, or generated build outputs.
-
 
 
 
