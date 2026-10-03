@@ -24,3 +24,5 @@
 # Downloaded dependencies and build output
 /.deps/
 /build-output/
+/build-x64/
+/build-output-x64/
