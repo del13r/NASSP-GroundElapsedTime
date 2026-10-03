@@ -16,19 +16,23 @@ Quick start (details in
 ## 64-bit build (OpenOrbiter 2024 + NASSP 9) - CMake
 
 This is a separate build path from the Win32 beta90 solution above, which is
-unchanged. Use it if you run OpenOrbiter 2024 (x64) with NASSP 9
-(`NASSP-V9.0-Folgers-Alpha-421`). The DLL is built against NASSP 9's headers,
-so it must be used with a NASSP 9 install of that same version.
+unchanged. Use it if you run OpenOrbiter 2024 (x64) with NASSP 9. By default,
+the x64 build uses the current head of NASSP's `Orbiter2016` branch and prints
+the resolved commit during dependency setup. You can select another NASSP
+branch, tag, or commit with `-NasspRef` for a controlled test.
 
 You need: Visual Studio with the "Desktop development with C++" workload
 (includes CMake), Git, and your OpenOrbiter 2024 folder (e.g. `D:\Orbiter2024`).
 
 1. Open "Developer PowerShell for VS" and `cd` to this repository's folder.
-2. Download dependencies (NASSP 9 pinned to commit
-   `8d3e3e3ee99ece8cb88cb6aaf3f04af80efc3a6c`; the Orbiter 2024 SDK is copied
-   from your install) into the ignored `.deps\` folder:
+2. Fetch the current NASSP `Orbiter2016` branch head and copy the Orbiter 2024
+   SDK from your install into the ignored `.deps\` folder:
 
        powershell -ExecutionPolicy Bypass -File .\setup-deps-x64.ps1 -OrbiterSdkSource D:\Orbiter2024
+
+   To test a specific branch, tag, or commit instead, add
+   `-NasspRef <branch-or-tag-or-commit>`. Re-running setup updates the existing
+   repo-local NASSP checkout and resets it to the selected ref.
 
 3. Configure and build (change the generator name if your Visual Studio is
    different, e.g. `"Visual Studio 17 2022"`):
@@ -41,6 +45,13 @@ You need: Visual Studio with the "Desktop development with C++" workload
 4. Copy it to `D:\Orbiter2024\Modules\Plugin\` and enable `GroundElapsedTime`
    in the launchpad's Modules tab. The pipe name, message format and 10 Hz
    cadence are identical to the Win32 build.
+
+**Moving-target compatibility warning:** the NASSP binaries you run must match
+the headers used to build this DLL closely. Testing against the current
+`Orbiter2016` branch head is a moving-target experiment: NASSP changes can
+break compilation, ABI compatibility, or runtime behavior. You accept that
+risk when using this build; a successful compile does not guarantee runtime
+compatibility.
 
 Optional protocol test (no Orbiter needed; uses the real exporter code with a
 stubbed Orbiter API):

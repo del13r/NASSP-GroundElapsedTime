@@ -7,7 +7,7 @@
 #>
 [CmdletBinding()]
 param(
-    [switch]$Force,
+    [string]$NasspRef = 'Orbiter2016',
     # Your OpenOrbiter 2024 x64 install folder (the one containing Orbiter.exe
     # and Orbitersdk\). Only include\, lib\ and XRSound\ are copied.
     [string]$OrbiterSdkSource
@@ -15,11 +15,20 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-# --- Pinned dependency versions ---------------------------------------------
+# --- NASSP source -----------------------------------------------------------
 $NasspRepo   = 'https://github.com/rcflyinghokie/NASSP.git'
-$NasspTag    = 'NASSP-V9.0-Folgers-Alpha-421'
-$NasspCommit = '8d3e3e3ee99ece8cb88cb6aaf3f04af80efc3a6c'
 # -----------------------------------------------------------------------------
+
+function Invoke-Git {
+    param([string[]]$Arguments)
+
+    $output = & git @Arguments 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "git $($Arguments -join ' ') failed (exit $exitCode): $($output -join [Environment]::NewLine)"
+    }
+    return ($output -join [Environment]::NewLine)
+}
 
 $root = $PSScriptRoot
 $deps = Join-Path $root '.deps'
@@ -27,20 +36,58 @@ $nassp = Join-Path $deps 'NASSP-9'
 $sdkRoot = Join-Path $deps 'OrbiterSDK-2024'
 New-Item -ItemType Directory -Force $deps | Out-Null
 
-$nasspOk = (Test-Path (Join-Path $nassp '.git')) -and
-    ((git -C $nassp rev-parse HEAD 2>$null) -eq $NasspCommit)
-if ($Force -or -not $nasspOk) {
-    if (Test-Path $nassp) { Remove-Item -Recurse -Force $nassp }
-    Write-Host "Cloning NASSP $NasspTag ..."
-    git clone --quiet --filter=blob:none --no-checkout $NasspRepo $nassp
-    if ($LASTEXITCODE) { throw 'git clone failed' }
-    git -C $nassp sparse-checkout set --no-cone '/Orbitersdk/samples/ProjectApollo/'
-    git -C $nassp checkout --quiet $NasspCommit
-    if ($LASTEXITCODE) { throw 'git checkout failed' }
+$NasspRef = $NasspRef.Trim()
+if (-not $NasspRef -or $NasspRef.StartsWith('-') -or $NasspRef.Contains("`n") -or $NasspRef.Contains("`r")) {
+    throw 'NasspRef must be a branch, tag, or commit (not an option or empty value)'
 }
-$head = git -C $nassp rev-parse HEAD
-if ($head -ne $NasspCommit) { throw "NASSP is at $head, expected $NasspCommit" }
-Write-Host "NASSP 9 source OK ($NasspTag, $NasspCommit)"
+
+if (Test-Path $nassp) {
+    if (-not (Test-Path (Join-Path $nassp '.git'))) {
+        throw "$nassp exists but is not a Git checkout; move it aside before running setup"
+    }
+    $topLevel = Invoke-Git -Arguments @('-C', $nassp, 'rev-parse', '--show-toplevel')
+    if ([IO.Path]::GetFullPath($topLevel.Trim()) -ne [IO.Path]::GetFullPath($nassp)) {
+        throw "$nassp is not the root of its Git checkout"
+    }
+    $origin = Invoke-Git -Arguments @('-C', $nassp, 'remote', 'get-url', 'origin')
+    if ($origin.TrimEnd('/') -ne $NasspRepo) {
+        throw "Unexpected NASSP checkout origin '$origin'; expected '$NasspRepo'"
+    }
+    Write-Host 'Updating existing repo-local NASSP checkout ...'
+}
+else {
+    Write-Host 'Cloning NASSP source ...'
+    Invoke-Git -Arguments @('clone', '--quiet', '--filter=blob:none', '--no-checkout', $NasspRepo, $nassp) | Out-Null
+}
+
+Invoke-Git -Arguments @('-C', $nassp, 'sparse-checkout', 'set', '--no-cone', '/Orbitersdk/samples/ProjectApollo/') | Out-Null
+
+$remoteBranch = Invoke-Git -Arguments @('ls-remote', '--heads', $NasspRepo, "refs/heads/$NasspRef")
+if ($remoteBranch.Trim()) {
+    Invoke-Git -Arguments @('-C', $nassp, 'fetch', '--quiet', 'origin', "+refs/heads/$NasspRef`:refs/remotes/origin/$NasspRef") | Out-Null
+    $expectedHead = Invoke-Git -Arguments @('-C', $nassp, 'rev-parse', "refs/remotes/origin/$NasspRef")
+    Invoke-Git -Arguments @('-C', $nassp, 'checkout', '--quiet', '-B', $NasspRef, "refs/remotes/origin/$NasspRef") | Out-Null
+    Invoke-Git -Arguments @('-C', $nassp, 'reset', '--hard', "refs/remotes/origin/$NasspRef") | Out-Null
+    $checkedOutBranch = Invoke-Git -Arguments @('-C', $nassp, 'symbolic-ref', '--short', 'HEAD')
+    if ($checkedOutBranch -ne $NasspRef) {
+        throw "NASSP checkout is on branch '$checkedOutBranch', expected '$NasspRef'"
+    }
+}
+else {
+    Invoke-Git -Arguments @('-C', $nassp, 'fetch', '--quiet', 'origin', $NasspRef) | Out-Null
+    $expectedHead = Invoke-Git -Arguments @('-C', $nassp, 'rev-parse', '--verify', 'FETCH_HEAD^{commit}')
+    Invoke-Git -Arguments @('-C', $nassp, 'checkout', '--quiet', '--detach', '--force', $expectedHead) | Out-Null
+    Invoke-Git -Arguments @('-C', $nassp, 'reset', '--hard', $expectedHead) | Out-Null
+    $checkedOutBranch = 'detached'
+}
+Invoke-Git -Arguments @('-C', $nassp, 'clean', '-fd') | Out-Null
+$head = Invoke-Git -Arguments @('-C', $nassp, 'rev-parse', 'HEAD')
+if ($head -ne $expectedHead) { throw "NASSP is at $head, expected fetched ref $expectedHead" }
+$workingTree = Invoke-Git -Arguments @('-C', $nassp, 'status', '--porcelain')
+if ($workingTree.Trim()) { throw "NASSP checkout is not clean after reset:`n$workingTree" }
+Write-Host ''
+Write-Host "NASSP SOURCE RESOLVED: $NasspRef -> $head (checkout: $checkedOutBranch)" -ForegroundColor Cyan
+Write-Host ''
 
 # --- OpenOrbiter 2024 SDK (copied from your local install, never downloaded) -
 $sdk = Join-Path $sdkRoot 'Orbitersdk'

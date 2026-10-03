@@ -110,6 +110,31 @@ launchpad's *Modules* tab. A correctly loaded plugin logs a line such as
 Keep only one copy: delete any stale `Modules\GroundElapsedTime.dll` (root of
 `Modules`) so it cannot be confused with `Modules\Plugin\GroundElapsedTime.dll`. The pipe is served while Orbiter runs.
 
+## 64-bit build (OpenOrbiter 2024 + NASSP 9)
+
+The separate x64 CMake path uses the current head of NASSP's `Orbiter2016`
+branch by default. Setup prints the resolved commit and updates the repo-local
+`.deps\NASSP-9` sparse checkout on each run. The Orbiter 2024 SDK is copied
+from a local install; this path does not change the Win32 dependencies above.
+
+From the repository root in a Developer PowerShell for Visual Studio, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup-deps-x64.ps1 -OrbiterSdkSource D:\Orbiter2024
+cmake -S . -B build-x64 -G "Visual Studio 18 2026" -A x64
+cmake --build build-x64 --config Release
+```
+
+Use `-NasspRef <branch-or-tag-or-commit>` with the setup script to select a
+specific NASSP ref for a controlled test. The built plugin is written to
+`build-output-x64\Modules\Plugin\GroundElapsedTime.dll`.
+
+**Moving-target compatibility warning:** the NASSP binaries you run must match
+the headers used to build this DLL closely. The current `Orbiter2016` branch
+head can change and may break compilation, ABI compatibility, or runtime
+behavior. You accept that risk when testing the moving branch; a successful
+compile does not guarantee runtime compatibility.
+
 ## Files
 
 - `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
@@ -122,7 +147,6 @@ Keep only one copy: delete any stale `Modules\GroundElapsedTime.dll` (root of
 
 This repository does not include the Orbiter SDK, NASSP source, compiled
 libraries, or generated build outputs.
-
 
 
 
