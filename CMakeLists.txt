@@ -1,15 +1,14 @@
 cmake_minimum_required(VERSION 3.19)
 
-# 64-bit build of the GroundElapsedTime pipe exporter for OpenOrbiter 2024 +
-# NASSP 9. The Win32 beta90 Visual Studio solution is a separate, unchanged
-# build path; this file is used only for x64.
+# 64-bit build of the GroundElapsedTime pipe exporter and GET Delay MFD for
+# OpenOrbiter 2024 + NASSP 9. This is the only supported build.
 project(GroundElapsedTime VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "This CMake build is x64 only. Use GroundElapsedTime.sln for the Win32 beta90 build.")
+    message(FATAL_ERROR "GroundElapsedTime supports x64 only. Configure with -A x64.")
 endif()
 
 # Dependencies live in the git-ignored .deps folder (see setup-deps-x64.ps1).
@@ -30,7 +29,9 @@ set(SRC "${CMAKE_SOURCE_DIR}/Orbitersdk/samples/GroundElapsedTime/src")
 add_library(GroundElapsedTime SHARED
     ${SRC}/GroundElapsedTimePlugin.cpp
     ${SRC}/GroundElapsedTimeCommon.cpp
-    ${SRC}/GroundElapsedTimeExport.cpp)
+    ${SRC}/GroundElapsedTimeExport.cpp
+    ${SRC}/GroundElapsedTimeOffset.cpp
+    ${SRC}/GroundElapsedTimeMFD.cpp)
 
 # Same include list as NASSP's own ProjectApolloMFD CMake target.
 target_include_directories(GroundElapsedTime PRIVATE
@@ -61,8 +62,8 @@ set_target_properties(GroundElapsedTime PROPERTIES
 # Optional: pipe protocol test harness (real exporter code, stubbed Orbiter API).
 option(GET_BUILD_PIPE_HARNESS "Build tests/pipe_harness" OFF)
 if(GET_BUILD_PIPE_HARNESS)
-    add_executable(pipe_harness tests/pipe_harness/pipe_harness.cpp ${SRC}/GroundElapsedTimeExport.cpp)
+    add_executable(pipe_harness tests/pipe_harness/pipe_harness.cpp ${SRC}/GroundElapsedTimeExport.cpp ${SRC}/GroundElapsedTimeOffset.cpp)
     target_include_directories(pipe_harness PRIVATE tests/pipe_harness/stub ${SRC})
-    target_compile_definitions(pipe_harness PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_definitions(pipe_harness PRIVATE _CRT_SECURE_NO_WARNINGS "GET_TEST_PIPE_NAME=\"\\\\\\\\.\\\\pipe\\\\GroundElapsedTimeTest\"")
     set_target_properties(pipe_harness PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/harness")
 endif()

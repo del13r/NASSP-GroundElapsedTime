@@ -2,21 +2,12 @@
 
 Addon that exports NASSP Project Apollo Ground Elapsed Time and Orbiter time acceleration on the local named pipe `\\.\pipe\GroundElapsedTime`.
 Values are republished at 10 Hz (100 ms), or immediately when they change.
+A **GET Delay** MFD page can shift the published GET by a signed offset (output = raw GET + offset). Mark the simulation event and when it is heard in the transcript to calculate a correction that APL adds to the current offset (SET enters an absolute offset) (see the addon README).
 
-Quick start (details in
-`Orbitersdk/samples/GroundElapsedTime/README.md`):
+## Build (x64 only: OpenOrbiter 2024 + NASSP 9) - CMake
 
-1. `powershell -ExecutionPolicy Bypass -File .\setup-deps.ps1` (downloads
-   NASSP source and the Orbiter SDK into the ignored `.deps\` folder)
-2. Open `GroundElapsedTime.sln`, choose **Release | x86**, build.
-3. Copy `build-output\Modules\Plugin\GroundElapsedTime.dll` into your Orbiter
-   installation's `Modules\Plugin\` folder and enable it in the launchpad.
-
-
-## 64-bit build (OpenOrbiter 2024 + NASSP 9) - CMake
-
-This is a separate build path from the Win32 beta90 solution above, which is
-unchanged. Use it if you run OpenOrbiter 2024 (x64) with NASSP 9. By default,
+This is the only supported build; the old 32-bit Orbiter beta90 build has been
+removed. Details are in `Orbitersdk/samples/GroundElapsedTime/README.md`. By default,
 the x64 build uses the current head of NASSP's `Orbiter2016` branch and prints
 the resolved commit during dependency setup. You can select another NASSP
 branch, tag, or commit with `-NasspRef` for a controlled test.
@@ -44,7 +35,7 @@ You need: Visual Studio with the "Desktop development with C++" workload
    (64-bit; also exports `GetModuleVersion`, required by Orbiter 2024).
 4. Copy it to `D:\Orbiter2024\Modules\Plugin\` and enable `GroundElapsedTime`
    in the launchpad's Modules tab. The pipe name, message format and 10 Hz
-   cadence are identical to the Win32 build.
+   cadence are as documented in the addon README.
 
 **Moving-target compatibility warning:** the NASSP binaries you run must match
 the headers used to build this DLL closely. Testing against the current

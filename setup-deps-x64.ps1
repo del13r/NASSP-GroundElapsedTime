@@ -2,8 +2,7 @@
   Downloads/copies the x64 build dependencies into the repo-local, git-ignored .deps folder.
   Run once:
     powershell -ExecutionPolicy Bypass -File .\setup-deps-x64.ps1 -OrbiterSdkSource D:\Orbiter2024
-  Nothing is installed outside this repository. (The Win32/beta90 build keeps
-  using setup-deps.ps1 and .deps\NASSP, .deps\OrbiterSDK - untouched.)
+  Nothing is installed outside this repository.
 #>
 [CmdletBinding()]
 param(

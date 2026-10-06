@@ -57,65 +57,58 @@ powershell -ExecutionPolicy Bypass -File .\Read-GroundElapsedTime.ps1
 It prints lines such as `GET=3:15:24  acceleration=10x`. The essence in your
 own code is: connect a `NamedPipeClientStream('.', 'GroundElapsedTime', 'In')`, `Read` into a buffer, split the ASCII text on `\n`, and use the **last two lines**. A byte-mode reader (the .NET default; a read-only client cannot switch to message mode) may receive several queued updates joined together, and the newest is last.
 
-## Build (self-contained, no absolute paths)
+## GET Delay MFD page (offset the published GET)
 
-Everything is resolved inside this repository. Nothing is read from a
-sibling NASSP or Orbiter folder, and nothing is written outside the repo.
+The plugin also registers an Orbiter MFD mode named **GET Delay**. Select it
+like any MFD mode (MFD `MNU` / mode button, then pick *GET Delay*). It lets you
+shift the GET published as **line 1** of the pipe, e.g. to line a text-to-speech
+script up with a delayed broadcast. Line 2 (acceleration) and the two-line
+format are unchanged, and with no offset applied the output is exactly the raw
+GET as before.
 
-### 1. Prerequisites
+**Sign convention** (whole seconds, `[+|-]M:SS`): the offset is *added*
+to the simulator's raw GET: output = raw GET + offset. If the simulator GET is 15 s
+ahead of the transcript, the offset is `+0:15` and the output is raw GET + 15 s;
+`-0:15` subtracts 15 s. Unsupported
+vessels still publish `0:00:00` (no offset applied).
 
-- Windows with Visual Studio (2019/2022/2026) and the **Desktop development
-  with C++** workload, plus the **MSVC v145 x86/x64 build tools** component
-  (the project uses the v145 toolset).
+Buttons (side buttons; keyboard shortcut in brackets):
+
+| Button | Action |
+| --- | --- |
+| SIM [S] | Mark when the simulation event occurs, using a real-time wall-clock timestamp |
+| TRN [T] | Mark when the corresponding event is heard in the transcript, using a real-time wall-clock timestamp |
+| SET [M] | Type a signed **absolute** offset, e.g. `+2:30`, `-0:45`, `90` (seconds) in Orbiter's input box; APL replaces the applied offset with it |
+| NEG [N] | Flip the staged value's sign (not available once applied) |
+| APL [A] | **Apply** the staged value: a SIM/TRN correction is **added** to the applied offset; a SET value replaces it |
+| CLR [C] | Remove the applied offset, both event marks and the candidate |
+
+Once both events are marked, the measured **correction** is the transcript event timestamp
+minus the simulation event timestamp, rounded to the nearest whole second.
+Thus, if the transcript event is heard after the simulation event, the
+correction is positive; if it is heard before the simulation event, it is\nnegative. Pressing either mark button again replaces that event's timestamp and\nrecalculates the correction once both marks exist; this never commits it.
+
+**SIM/TRN corrections are cumulative.** APL *adds* the correction to the\ncurrently applied offset (e.g. applied `+2:30` plus correction `-0:20` gives\n`+2:10`), then clears both event marks so the next measurement starts fresh,\nand a second APL does nothing. **SET is absolute:** APL replaces the applied\noffset with the typed value. **CLR** is the only way back to zero. The page\nshows each event mark, the *measured correction* (or manual absolute value), the\n*resulting* / *new applied* offset, and whether it is `APPLIED` or\n`NOT APPLIED`. Offsets are limited to 99:59:59 (results are clamped). The\noffset lives in memory only: it is not saved with scenarios and resets when\nOrbiter restarts.
+
+## Build (x64 only, self-contained)
+
+Only the 64-bit build for OpenOrbiter 2024 + NASSP 9 is supported (CMake). The
+earlier 32-bit Orbiter beta90 / Visual Studio solution path has been removed.
+Everything is resolved inside this repository; nothing is read from a sibling
+NASSP or Orbiter folder and nothing is written outside the repo.
+
+### Prerequisites
+
+- Windows with Visual Studio and the **Desktop development with C++**
+  workload (includes CMake).
 - Git on your `PATH`.
-- About 1 GB of free disk space for the downloads.
+- An OpenOrbiter 2024 (x64) install, for its SDK headers and libraries.
+### Download dependencies and build
 
-### 2. Download the dependencies (once)
-
-In PowerShell from the repository root:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\setup-deps.ps1
-```
-
-This populates the git-ignored `.deps\` folder with pinned versions:
-
-| Dependency | Source | Pin |
-| --- | --- | --- |
-| NASSP source (`Orbitersdk\samples\ProjectApollo`, needed because the addon uses NASSP's internal vessel classes) | `https://github.com/orbiternassp/NASSP.git` | tag `NASSP-V8.0-Beta-Orbiter2016-2641`, commit `606aa359ebdf4c920336871f90f742035ec65304` |
-| Orbiter beta90 SDK headers and 32-bit libs | copied from your local install via `-OrbiterSdkSource` | no download; hashes in `sdk.manifest` |
-
-Results: `.deps\NASSP\` and `.deps\OrbiterSDK\Orbitersdk\{include,lib}`.
-The NASSP source is downloaded, never committed. Re-run with `-Force` to re-clone it.
-
-### 3. Build
-
-1. Open `GroundElapsedTime.sln` (repository root) in Visual Studio.
-2. Select **Release** and **x86**.
-3. **Build > Build Solution**.
-
-Or from a Developer PowerShell: `msbuild GroundElapsedTime.sln /p:Configuration=Release /p:Platform=x86`.
-
-Output: `build-output\Modules\Plugin\GroundElapsedTime.dll`
-(intermediates are in `build-output\obj\`). Do not use the x64 SDK.
-
-### 4. Install into Orbiter (separate step)
-
-Building does not touch any Orbiter installation. Orbiter and NASSP must
-already be installed (32-bit Orbiter running NASSP). Copy
-`build-output\Modules\Plugin\GroundElapsedTime.dll` into that installation's
-`Modules\Plugin\` folder, then enable **GroundElapsedTime** in the Orbiter
-launchpad's *Modules* tab. A correctly loaded plugin logs a line such as
-`Module GroundElapsedTime.dll .. [Build ..., API 190914]` in `Orbiter.log`.
-Keep only one copy: delete any stale `Modules\GroundElapsedTime.dll` (root of
-`Modules`) so it cannot be confused with `Modules\Plugin\GroundElapsedTime.dll`. The pipe is served while Orbiter runs.
-
-## 64-bit build (OpenOrbiter 2024 + NASSP 9)
-
-The separate x64 CMake path uses the current head of NASSP's `Orbiter2016`
+The CMake build uses the current head of NASSP's `Orbiter2016`
 branch by default. Setup prints the resolved commit and updates the repo-local
 `.deps\NASSP-9` sparse checkout on each run. The Orbiter 2024 SDK is copied
-from a local install; this path does not change the Win32 dependencies above.
+from a local install.
 
 From the repository root in a Developer PowerShell for Visual Studio, run:
 
@@ -135,18 +128,22 @@ head can change and may break compilation, ABI compatibility, or runtime
 behavior. You accept that risk when testing the moving branch; a successful
 compile does not guarantee runtime compatibility.
 
+### Install into Orbiter (separate step)
+
+Building does not touch any Orbiter installation. Copy
+`build-output-x64\Modules\Plugin\GroundElapsedTime.dll` into your OpenOrbiter 2024
+`Modules\Plugin\` folder and enable **GroundElapsedTime** in the launchpad's
+*Modules* tab. Keep only one copy of the DLL. The pipe is served while Orbiter runs.
+
 ## Files
 
 - `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
   formatting
 - `src\GroundElapsedTimeExport.cpp/.h` - named-pipe server (worker thread)
 - `Read-GroundElapsedTime.ps1` - sample pipe client
-- `Build\VC2017\GroundElapsedTime.vcxproj` - Visual Studio project
-- `..\..\..\GroundElapsedTime.sln`, `..\..\..\setup-deps.ps1` - solution and
+- `..\..\..\CMakeLists.txt`, `..\..\..\setup-deps-x64.ps1` - x64 build and
   dependency setup at the repository root
+- `..\..\..\tests\pipe_harness` - pipe/offset protocol test
 
 This repository does not include the Orbiter SDK, NASSP source, compiled
 libraries, or generated build outputs.
-
-
-

@@ -1,23 +1,26 @@
 /***************************************************************************
   GroundElapsedTime named-pipe plugin entry points.
 
-  This file deliberately registers no visible MFD mode. It only starts the
-  GroundElapsedTime named-pipe exporter.
+  It starts the GroundElapsedTime named-pipe exporter and registers the
+  "GET Delay" MFD page.
   ***************************************************************************/
 
-// Required: makes OrbiterAPI.h export ModuleDate(), which Orbiter beta90 uses
-// to recognise and log a plugin module. Define it in this one file only.
+// Makes OrbiterAPI.h export ModuleDate() so Orbiter can recognise and log the
+// plugin module. Define it in this one file only.
 #define ORBITER_MODULE
 #include "Orbitersdk.h"
 #include "GroundElapsedTimeExport.h"
+#include "GroundElapsedTimeMFD.h"
 
 DLLCLBK void opcDLLInit(HINSTANCE hDLL)
 {
 	GroundElapsedTimeExportInit();
+	GroundElapsedTimeMFDInit(hDLL);
 }
 
 DLLCLBK void opcDLLExit(HINSTANCE hDLL)
 {
+	GroundElapsedTimeMFDExit();
 	GroundElapsedTimeExportExit();
 }
 

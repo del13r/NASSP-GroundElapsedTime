@@ -21,8 +21,15 @@
 
 #include "GroundElapsedTimeCommon.h"
 #include "GroundElapsedTimeExport.h"
+#include "GroundElapsedTimeOffset.h"
 
+// The test harness builds this file with its own pipe name so it cannot clash
+// with a running Orbiter.
+#ifdef GET_TEST_PIPE_NAME
+static const char *PIPE_NAME = GET_TEST_PIPE_NAME;
+#else
 static const char *PIPE_NAME = "\\\\.\\pipe\\GroundElapsedTime";
+#endif
 static const DWORD PIPE_BUFFER_BYTES = 4096;
 static const DWORD WRITE_TIMEOUT_MS = 1000;
 static const DWORD RETRY_CREATE_MS = 1000;
@@ -227,6 +234,8 @@ void GroundElapsedTimeExportStep(double simt)
 	double mt = 0.0;
 	if (!focusVessel || !ComputeGroundElapsedTime(focusVessel, mt))
 		mt = 0.0;
+	else
+		mt = GetOffsetApplyToGET(mt); // identity while no offset is applied
 
 	char hms[64];
 	char accel[64];
