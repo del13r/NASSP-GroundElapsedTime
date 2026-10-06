@@ -86,9 +86,23 @@ Buttons (side buttons; keyboard shortcut in brackets):
 Once both events are marked, the measured **correction** is the transcript event timestamp
 minus the simulation event timestamp, rounded to the nearest whole second.
 Thus, if the transcript event is heard after the simulation event, the
-correction is positive; if it is heard before the simulation event, it is\nnegative. Pressing either mark button again replaces that event's timestamp and\nrecalculates the correction once both marks exist; this never commits it.
+correction is positive; if it is heard before the simulation event, it is
+negative. Pressing either mark button again replaces that event's timestamp and
+recalculates the correction once both marks exist; this never commits it.
 
-**SIM/TRN corrections are cumulative.** APL *adds* the correction to the\ncurrently applied offset (e.g. applied `+2:30` plus correction `-0:20` gives\n`+2:10`), then clears both event marks so the next measurement starts fresh,\nand a second APL does nothing. **SET is absolute:** APL replaces the applied\noffset with the typed value. **CLR** is the only way back to zero. The page\nshows each event mark, the *measured correction* (or manual absolute value), the\n*resulting* / *new applied* offset, and whether it is `APPLIED` or\n`NOT APPLIED`. Offsets are limited to 99:59:59 (results are clamped). The\noffset lives in memory only: it is not saved with scenarios and resets when\nOrbiter restarts.
+**SIM/TRN corrections are cumulative.** APL *adds* the correction to the
+currently applied offset (e.g. applied `+2:30` plus correction `-0:20` gives
+`+2:10`), then clears both event marks so the next measurement starts fresh,
+and a second APL does nothing.
+
+**SET is absolute:** APL replaces the applied offset with the typed value.
+**CLR** is the only way back to zero.
+
+The page shows each event mark, the *measured correction* (or manual absolute
+value), the *resulting* (new applied) offset, and whether it is `APPLIED` or
+`NOT APPLIED`. Offsets are limited to 99:59:59 (results are clamped). The
+offset lives in memory only: it is not saved with scenarios and resets when
+Orbiter restarts.
 
 ## Build (x64 only, self-contained)
 
