@@ -21,8 +21,14 @@ void GroundElapsedTimeExportInit();
 void GroundElapsedTimeExportExit();
 
 // Called every simulation step from the Orbiter thread. Never blocks on pipe
-// I/O; it only hands the latest message to the worker thread when it changes
-// or at least once per 100 ms of wall-clock time.
+// I/O. Enqueues one message per displayed whole second crossed since the
+// previous step (in order, either direction), an immediate message for the
+// first sample / acceleration change / discontinuity, and a heartbeat message
+// once per second of wall-clock time when nothing else was published.
 void GroundElapsedTimeExportStep(double simt);
+
+// Number of queued messages dropped because the bounded queue was full
+// (diagnostics / tests).
+unsigned long GroundElapsedTimeExportDroppedCount();
 
 #endif // !__GROUNDELAPSEDTIMEEXPORT_H

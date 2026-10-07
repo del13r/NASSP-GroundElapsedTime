@@ -25,16 +25,26 @@ read while a NASSP simulation is running. It no longer writes any file.
 - **Source of GET:** the focused vessel, using NASSP's logic: S-IVB time is
   preferred when focused; otherwise MCC time is used, with Saturn, Crawler and
   LEM as pre-liftoff fallbacks. Unsupported vessels give `0:00:00`.
-- **Cadence:** a new message is sent immediately whenever either line changes
-  (including time acceleration changes), and otherwise every 100 ms of real
-  (wall-clock) time (10 Hz). A client that connects receives the latest value
-  immediately. GET is formatted to whole seconds, so 10 Hz republishes provide
-  fresh delivery without increasing the value's one-second resolution. The
-  simulation-step callback drives this cadence: when Orbiter runs below 10
-  steps per second, publication is limited by its step rate.
-- **Never blocks Orbiter:** the simulation thread only hands the value to a
-  background thread, which does all pipe I/O asynchronously.
-
+- **Cadence (event-driven):** a message is sent when the *displayed* GET
+  (whole seconds, truncated toward zero) changes, not at a fixed rate. If one
+  simulation step crosses several displayed seconds (e.g. a 60x frame), one
+  message is sent for **each** second, in order, ascending when time moved
+  forward and descending when it moved backward; this works across zero
+  (`-0:00:01`, `0:00:00`, `0:00:01`). Steps larger than 120 s, applying or
+  clearing a GET Delay offset, switching focus vessel, or a supported/unsupported
+  change are treated as jumps and publish only the current value. A change in
+  time acceleration publishes the current value immediately. When nothing else
+  was published, a **heartbeat** repeats the current value once per second of
+  real (wall-clock) time. A client that connects receives the latest value
+  immediately. Messages are driven by Orbiter's simulation-step callback, so
+  they are only produced while Orbiter steps (heartbeats stop if Orbiter is
+  not stepping, e.g. paused). Expect messages in bursts at high time
+  acceleration, and duplicates only from heartbeats.
+- **Never blocks Orbiter:** the simulation thread only appends to a bounded
+  in-memory queue (256 messages); a background thread does all pipe I/O
+  asynchronously. If a client stalls and the queue fills, the oldest queued
+  messages are dropped (the newest are kept), so a very slow reader may see
+  gaps but always ends on the current value. Read continuously.
 ### Lifecycle and reconnect
 
 - The pipe appears when Orbiter loads the plugin and is removed when it exits.

@@ -3,9 +3,14 @@
 
   Threading model
   - Orbiter's simulation thread only calls GroundElapsedTimeExportStep().
-    It formats a tiny ASCII message and, when it changed (or every 100 ms
-    of wall-clock time), copies it into a shared slot under a critical
-    section held only for a memcpy, then signals an event. It never performs
+    It tracks the displayed (whole-second, truncated toward zero) GET and
+    enqueues one tiny ASCII message for EVERY displayed second crossed since
+    the previous sample, in order, in either direction. Large jumps, offset
+    changes, focus changes and unsupported<->supported changes are treated as
+    discontinuities and publish only the current value. Besides changes, a
+    wall-clock heartbeat republishes the current value. Messages go into a
+    bounded queue under a critical section held only for a memcpy; when the
+    queue is full the oldest entry is dropped. The sim thread never performs
     pipe I/O and never waits for a client.
   - A worker thread owns the pipe. It uses overlapped (asynchronous) I/O
     for connect and write, and every wait also watches a stop event, so
@@ -33,22 +38,41 @@ static const char *PIPE_NAME = "\\\\.\\pipe\\GroundElapsedTime";
 static const DWORD PIPE_BUFFER_BYTES = 4096;
 static const DWORD WRITE_TIMEOUT_MS = 1000;
 static const DWORD RETRY_CREATE_MS = 1000;
-static const ULONGLONG REPUBLISH_INTERVAL_MS = 100;
+#ifndef GET_HEARTBEAT_MS
+#define GET_HEARTBEAT_MS 1000
+#endif
+static const ULONGLONG HEARTBEAT_INTERVAL_MS = GET_HEARTBEAT_MS;
+// Largest displayed-second step (either direction) that is expanded into one
+// message per second. 120 s per sim step is 7200x at 60 steps/s. Larger steps
+// are discontinuities (jump, scenario change) and publish only the current value.
+static const long MAX_CATCHUP_SECONDS = 120;
 static const size_t MESSAGE_MAX = 128;
+static const int QUEUE_CAPACITY = 256;
 
 static CRITICAL_SECTION g_lock;
 static bool g_lockReady = false;
+// Latest published message (what a newly connected client receives first).
 static char g_message[MESSAGE_MAX] = "0:00:00\n1\n";
 static DWORD g_messageLen = 10;
+// Bounded FIFO of messages waiting for the worker. Guarded by g_lock.
+struct QueuedMessage { char text[MESSAGE_MAX]; DWORD len; };
+static QueuedMessage g_queue[QUEUE_CAPACITY];
+static int g_queueHead = 0;
+static int g_queueCount = 0;
+static volatile LONG g_droppedCount = 0;
 
 static HANDLE g_thread = NULL;
 static HANDLE g_stopEvent = NULL;
 static HANDLE g_updateEvent = NULL;
 
 // Main-thread-only state.
-static char g_lastPublished[MESSAGE_MAX] = "";
+static bool g_haveBase = false;
+static long g_baseSecond = 0;
+static VESSEL *g_baseVessel = NULL;
+static bool g_baseSupported = false;
+static long g_baseOffset = 0;
+static char g_baseAccel[64] = "";
 static ULONGLONG g_lastPublishTick = 0;
-static bool g_everPublished = false;
 
 static void FormatAcceleration(double accel, char *buffer, int size)
 {
@@ -70,12 +94,54 @@ static void FormatAcceleration(double accel, char *buffer, int size)
 	}
 }
 
-static void SnapshotMessage(char *out, DWORD &len)
+// A newly connected client gets the latest value only: stale queued entries
+// from before the connection are discarded in the same critical section.
+static void SnapshotLatestAndClear(char *out, DWORD &len)
 {
 	EnterCriticalSection(&g_lock);
 	len = g_messageLen;
 	memcpy(out, g_message, len);
+	g_queueHead = 0;
+	g_queueCount = 0;
 	LeaveCriticalSection(&g_lock);
+}
+
+static bool PopQueued(char *out, DWORD &len)
+{
+	bool got = false;
+	EnterCriticalSection(&g_lock);
+	if (g_queueCount > 0)
+	{
+		const QueuedMessage &q = g_queue[g_queueHead];
+		len = q.len;
+		memcpy(out, q.text, len);
+		g_queueHead = (g_queueHead + 1) % QUEUE_CAPACITY;
+		g_queueCount--;
+		got = true;
+	}
+	LeaveCriticalSection(&g_lock);
+	return got;
+}
+
+// Sim thread: append to the bounded queue (dropping the oldest when full) and
+// update the latest-value slot. Only a memcpy under the lock; never blocks on I/O.
+static void EnqueueMessage(const char *text, int n)
+{
+	EnterCriticalSection(&g_lock);
+	memcpy(g_message, text, n + 1);
+	g_messageLen = (DWORD)n;
+	if (g_queueCount == QUEUE_CAPACITY)
+	{
+		g_queueHead = (g_queueHead + 1) % QUEUE_CAPACITY;
+		g_queueCount--;
+		InterlockedIncrement(&g_droppedCount);
+	}
+	QueuedMessage &q = g_queue[(g_queueHead + g_queueCount) % QUEUE_CAPACITY];
+	memcpy(q.text, text, n + 1);
+	q.len = (DWORD)n;
+	g_queueCount++;
+	LeaveCriticalSection(&g_lock);
+	SetEvent(g_updateEvent);
 }
 
 // Writes one complete message. Returns false if the client is gone/stalled.
@@ -165,16 +231,26 @@ static DWORD WINAPI PipeThread(LPVOID)
 		// A new client immediately receives the latest value.
 		char msg[MESSAGE_MAX];
 		DWORD len;
-		SnapshotMessage(msg, len);
+		SnapshotLatestAndClear(msg, len);
 		bool ok = WriteMessage(pipe, ioEvent, msg, len);
 
 		while (ok)
 		{
+			// Drain everything queued, in order, before sleeping again.
+			while (ok && PopQueued(msg, len))
+			{
+				if (WaitForSingleObject(g_stopEvent, 0) == WAIT_OBJECT_0)
+				{
+					ok = false;
+					break;
+				}
+				ok = WriteMessage(pipe, ioEvent, msg, len);
+			}
+			if (!ok)
+				break;
 			HANDLE waits[2] = { g_updateEvent, g_stopEvent };
 			if (WaitForMultipleObjects(2, waits, FALSE, INFINITE) != WAIT_OBJECT_0)
 				break;
-			SnapshotMessage(msg, len);
-			ok = WriteMessage(pipe, ioEvent, msg, len);
 		}
 
 		// Client left (or we are stopping): reuse the same pipe instance.
@@ -197,8 +273,12 @@ void GroundElapsedTimeExportInit()
 		InitializeCriticalSection(&g_lock);
 		g_lockReady = true;
 	}
-	g_lastPublished[0] = '\0';
-	g_everPublished = false;
+	g_haveBase = false;
+	g_baseVessel = NULL;
+	g_baseAccel[0] = '\0';
+	g_queueHead = 0;
+	g_queueCount = 0;
+	g_droppedCount = 0;
 	g_stopEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 	g_updateEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
 	g_thread = CreateThread(NULL, 0, PipeThread, NULL, 0, NULL);
@@ -231,37 +311,83 @@ void GroundElapsedTimeExportStep(double simt)
 		return;
 
 	VESSEL *focusVessel = oapiGetFocusInterface();
+	bool supported = false;
 	double mt = 0.0;
-	if (!focusVessel || !ComputeGroundElapsedTime(focusVessel, mt))
-		mt = 0.0;
-	else
+	if (focusVessel && ComputeGroundElapsedTime(focusVessel, mt))
+	{
+		supported = true;
 		mt = GetOffsetApplyToGET(mt); // identity while no offset is applied
+	}
+	else
+		mt = 0.0;
+	if (!(mt > -2.0e9 && mt < 2.0e9)) // also rejects NaN
+		mt = 0.0;
 
-	char hms[64];
+	// Displayed second: GET is shown truncated toward zero, so consecutive
+	// displayed values are contiguous integers (..., -1, 0, 1, ...) in both signs.
+	long second = (long)mt;
+	long offset = GetOffsetApplied();
+
 	char accel[64];
-	FormatGroundElapsedTimeHMS(mt, hms, sizeof(hms));
 	FormatAcceleration(oapiGetTimeAcceleration(), accel, sizeof(accel));
 
-	char msg[MESSAGE_MAX];
-	int n = _snprintf(msg, sizeof(msg) - 1, "%s\n%s\n", hms, accel);
-	if (n < 0)
-		return;
-	msg[n] = '\0';
+	// Anything that is not continuous sim-time progression re-baselines
+	// and publishes only the current value.
+	bool discontinuity = !g_haveBase || focusVessel != g_baseVessel ||
+		supported != g_baseSupported || offset != g_baseOffset;
+	long delta = discontinuity ? 0 : second - g_baseSecond;
+	if (delta > MAX_CATCHUP_SECONDS || delta < -MAX_CATCHUP_SECONDS)
+		discontinuity = true;
+	bool accelChanged = strcmp(accel, g_baseAccel) != 0;
 
-	// Publish on any change, plus a wall-clock heartbeat so a client that
-	// connects late or a paused simulation still sees a fresh message.
 	ULONGLONG now = GetTickCount64();
-	if (g_everPublished && strcmp(msg, g_lastPublished) == 0 &&
-		(now - g_lastPublishTick) < REPUBLISH_INTERVAL_MS)
-		return;
+	char hms[64];
+	char msg[MESSAGE_MAX];
+	int n;
 
-	strcpy(g_lastPublished, msg);
-	g_lastPublishTick = now;
-	g_everPublished = true;
+	if (!discontinuity && delta != 0)
+	{
+		// Every displayed second crossed since the last sample, in order
+		// (ascending when time advanced, descending when it moved back).
+		long stepDir = delta > 0 ? 1 : -1;
+		for (long s = g_baseSecond + stepDir; ; s += stepDir)
+		{
+			FormatGroundElapsedTimeHMS((double)s, hms, sizeof(hms));
+			n = _snprintf(msg, sizeof(msg) - 1, "%s\n%s\n", hms, accel);
+			if (n >= 0)
+			{
+				msg[n] = '\0';
+				EnqueueMessage(msg, n);
+			}
+			if (s == second)
+				break;
+		}
+		g_lastPublishTick = now;
+	}
+	else if (discontinuity || accelChanged ||
+		(now - g_lastPublishTick) >= HEARTBEAT_INTERVAL_MS)
+	{
+		// Immediate current value: first sample, discontinuity, acceleration
+		// change, or the heartbeat for idle/paused periods and late clients.
+		FormatGroundElapsedTimeHMS((double)second, hms, sizeof(hms));
+		n = _snprintf(msg, sizeof(msg) - 1, "%s\n%s\n", hms, accel);
+		if (n >= 0)
+		{
+			msg[n] = '\0';
+			EnqueueMessage(msg, n);
+			g_lastPublishTick = now;
+		}
+	}
 
-	EnterCriticalSection(&g_lock);
-	memcpy(g_message, msg, n + 1);
-	g_messageLen = (DWORD)n;
-	LeaveCriticalSection(&g_lock);
-	SetEvent(g_updateEvent);
+	g_haveBase = true;
+	g_baseSecond = second;
+	g_baseVessel = focusVessel;
+	g_baseSupported = supported;
+	g_baseOffset = offset;
+	strcpy(g_baseAccel, accel);
+}
+
+unsigned long GroundElapsedTimeExportDroppedCount()
+{
+	return (unsigned long)g_droppedCount;
 }

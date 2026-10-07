@@ -1,7 +1,7 @@
 # NASSP-GroundElapsedTime
 
 Addon that exports NASSP Project Apollo Ground Elapsed Time and Orbiter time acceleration on the local named pipe `\\.\pipe\GroundElapsedTime`.
-Values are republished at 10 Hz (100 ms), or immediately when they change.
+Event-driven: a message is published for every displayed GET second crossed (in order, also across 60x frames and backward steps), immediately on acceleration changes, plus a 1 s heartbeat.
 A **GET Delay** MFD page can shift the published GET by a signed offset (output = raw GET + offset). Mark the simulation event and when it is heard in the transcript to calculate a correction that APL adds to the current offset (SET enters an absolute offset) (see the addon README).
 
 ## Build (x64 only: OpenOrbiter 2024 + NASSP 9) - CMake
@@ -34,8 +34,8 @@ You need: Visual Studio with the "Desktop development with C++" workload
    Result: `build-output-x64\Modules\Plugin\GroundElapsedTime.dll`
    (64-bit; also exports `GetModuleVersion`, required by Orbiter 2024).
 4. Copy it to `D:\Orbiter2024\Modules\Plugin\` and enable `GroundElapsedTime`
-   in the launchpad's Modules tab. The pipe name, message format and 10 Hz
-   cadence are as documented in the addon README.
+   in the launchpad's Modules tab. The pipe name, message format and
+   event-driven cadence are as documented in the addon README.
 
 **Moving-target compatibility warning:** the NASSP binaries you run must match
 the headers used to build this DLL closely. Testing against the current
