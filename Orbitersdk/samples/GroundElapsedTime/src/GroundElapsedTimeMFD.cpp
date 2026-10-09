@@ -42,8 +42,14 @@ static void SetStatus(const char *s)
 	g_status[sizeof(g_status) - 1] = '\0';
 }
 
-// Input-box callback. It only touches module state (never the MFD object),
-// so it stays valid even if the MFD is closed while the box is open.
+// The open MFD page (if any), so the input-box callback can request a redraw.
+// Cleared in the destructor, so the callback is safe if the MFD closes first.
+static class GroundElapsedTimeMFD *g_open = 0;
+
+// Input-box callback. Updates module state and asks the open page (if any)
+// to redraw immediately, so the staged value shows before APL is pressed.
+static void RequestRedraw();
+
 static bool DelayEntered(void *id, char *str, void *data)
 {
 	long seconds;
@@ -53,25 +59,50 @@ static bool DelayEntered(void *id, char *str, void *data)
 		return false;
 	}
 	GetOffsetSetCandidate(seconds);
-	SetStatus("Absolute offset staged - press APL (replaces applied)");
+	char t[48], m[96];
+	GetOffsetFormat(GetOffsetCandidate(), t, sizeof(t));
+	sprintf(m, "Manual absolute %s staged - press APL to REPLACE applied offset", t);
+	SetStatus(m);
+	RequestRedraw();
 	return true;
 }
 
 class GroundElapsedTimeMFD : public MFD2
 {
 public:
-	GroundElapsedTimeMFD(DWORD w, DWORD h, VESSEL *vessel) : MFD2(w, h, vessel) {}
+	GroundElapsedTimeMFD(DWORD w, DWORD h, VESSEL *vessel) : MFD2(w, h, vessel) { g_open = this; }
+	~GroundElapsedTimeMFD() { if (g_open == this) g_open = 0; }
+	void Redraw() { InvalidateDisplay(); }
 
-	bool Update(oapi::Sketchpad *skp)
+	struct Grid;
+
+	bool Update(oapi::Sketchpad *sk)
 	{
-		Title(skp, "GET Delay");
-		skp->SetFont(GetDefaultFont(0));
-		skp->SetTextAlign(oapi::Sketchpad::LEFT, oapi::Sketchpad::TOP);
+		Title(sk, "GET Delay");
+		sk->SetFont(GetDefaultFont(0));
+		sk->SetTextAlign(oapi::Sketchpad::LEFT, oapi::Sketchpad::TOP);
 		int x = (int)(W / 16);
-		int lh = (int)HIWORD(skp->GetCharSize());
+		int lh = (int)HIWORD(sk->GetCharSize());
 		if (lh < 8) lh = 14;
-		int y = lh * 2;
+		// Fixed row grid, like the Project Apollo MFDs: every text row (wrapped
+		// continuation rows included) is followed by one blank row.
+		int pitch = lh * 2;
+		int y = lh * 3;
+		Grid g = { sk, x, y, pitch, lh, true };
+		Content(g, true);
+		// Explanatory formula lines are the only content dropped, and only when
+		// everything would not fit the MFD height.
+		bool full = g.y - pitch + lh <= (int)H - lh;
+		g.y = y;
+		g.dry = false;
+		Content(g, full);
+		return true;
+	}
 
+	void Content(Grid &gr, bool full)
+	{
+		Grid *skp = &gr;
+		int x = gr.x, y = gr.y;
 		char b[128], t[48];
 		double raw = 0.0;
 		VESSEL *v = oapiGetFocusInterface();
@@ -92,16 +123,17 @@ public:
 			Line(skp, x, y, "Raw GET:     unsupported vessel");
 			Line(skp, x, y, "Output GET:  0:00:00 (no offset)");
 		}
-		y += lh / 2;
 
 		GetOffsetFormat(GetOffsetApplied(), t, sizeof(t));
 		skp->SetTextColor(GetOffsetApplied() ? RGB(255, 255, 0) : RGB(0, 255, 0));
 		sprintf(b, "Applied offset: %s %s", t, GetOffsetApplied() ? "" : "(none)");
 		Line(skp, x, y, b);
-		skp->SetTextColor(RGB(200, 200, 200));
-		Line(skp, x, y, GetOffsetApplied() > 0 ? "  output = raw GET + offset" :
-			GetOffsetApplied() < 0 ? "  output = raw GET - offset" : "  output = raw GET");
-		y += lh / 2;
+		if (full)
+		{
+			skp->SetTextColor(RGB(200, 200, 200));
+			Line(skp, x, y, GetOffsetApplied() > 0 ? "  output = raw GET + offset" :
+				GetOffsetApplied() < 0 ? "  output = raw GET - offset" : "  output = raw GET");
+		}
 
 		skp->SetTextColor(GetOffsetHasSimEvent() ? RGB(0, 255, 0) : RGB(160, 160, 160));
 		Line(skp, x, y, GetOffsetHasSimEvent() ? "SIM event: MARKED" : "SIM event: not marked");
@@ -127,9 +159,9 @@ public:
 		}
 		else
 			Line(skp, x, y, "Correction/candidate: none");
-		y += lh / 2;
 		skp->SetTextColor(RGB(200, 200, 200));
-		Line(skp, x, y, "Output GET = raw GET + offset");
+		if (full)
+			Line(skp, x, y, "Output GET = raw GET + offset");
 		if (GetOffsetHasSimEvent() != GetOffsetHasTranscriptEvent())
 			Line(skp, x, y, "Mark the other event to calculate a correction");
 		if (g_status[0])
@@ -137,7 +169,6 @@ public:
 			skp->SetTextColor(RGB(255, 255, 0));
 			Line(skp, x, y, g_status);
 		}
-		return true;
 	}
 
 	int ButtonMenu(const MFDBUTTONMENU **menu) const
@@ -173,11 +204,52 @@ public:
 	}
 
 private:
-	void Line(oapi::Sketchpad *skp, int x, int &y, const char *s)
+	// Text grid: every text row is followed by one blank row (pitch = 2 x font
+	// height). Long text wraps onto following rows. A line that does not fit
+	// entirely above the bottom margin is skipped, never clipped.
+	struct Grid
 	{
-		skp->Text(x, y, s, (int)strlen(s));
-		int lh = (int)HIWORD(skp->GetCharSize());
-		y += (lh < 8 ? 14 : lh) + 2;
+		oapi::Sketchpad *sk;
+		int x, y, pitch, lh;
+		bool dry; // measure only: advance y without drawing or skipping
+		void SetTextColor(COLORREF c) { sk->SetTextColor(c); }
+	};
+
+	void Line(Grid *g, int, int &, const char *s)
+	{
+		oapi::Sketchpad *skp = g->sk;
+		int cw = (int)LOWORD(skp->GetCharSize());
+		int maxw = (int)W - 2 * g->x;
+		int indent = 0;
+		while (s[0] == ' ') { indent++; s++; }
+		int ix = indent * cw;
+
+		// Break into rows first so the whole line can be checked against the
+		// bottom margin.
+		const char *start[8];
+		int count[8], rows = 0;
+		while (*s && rows < 8)
+		{
+			int len = (int)strlen(s), fit = 0, brk = 0;
+			while (fit < len && skp->GetTextWidth(s, fit + 1) <= maxw - ix - (rows ? 2 * cw : 0))
+			{
+				fit++;
+				if (s[fit] == ' ' || s[fit] == '\0') brk = fit;
+			}
+			if (fit == len) brk = len;
+			else if (brk == 0) brk = fit > 0 ? fit : 1;
+			start[rows] = s;
+			count[rows++] = brk;
+			s += brk;
+			while (*s == ' ') s++;
+		}
+		if (g->dry) { g->y += rows * g->pitch; return; }
+		if (g->y + (rows - 1) * g->pitch + g->lh > (int)H - g->lh) return;
+		for (int i = 0; i < rows; i++)
+		{
+			skp->Text(g->x + ix + (i ? 2 * cw : 0), g->y, start[i], count[i]);
+			g->y += g->pitch;
+		}
 	}
 
 	bool Action(int bt)
@@ -221,6 +293,11 @@ private:
 		return true;
 	}
 };
+
+static void RequestRedraw()
+{
+	if (g_open) g_open->Redraw();
+}
 
 static OAPI_MSGTYPE MsgProc(UINT msg, UINT mfd, WPARAM wparam, LPARAM lparam)
 {
