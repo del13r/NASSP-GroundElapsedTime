@@ -8,13 +8,24 @@
 #include <string.h>
 
 static VESSEL g_vessel;
+static VESSEL g_astronautVessel;
+static VESSEL *g_focusVessel = &g_vessel;
 static double g_met = 11724.0; // 3:15:24
 static double g_accel = 10.0;
 static bool g_supported = true;
+static GroundElapsedTimeSources g_mockSources;
+static bool g_useMockSources = false;
 
-VESSEL *oapiGetFocusInterface() { return &g_vessel; }
+VESSEL *oapiGetFocusInterface() { return g_focusVessel; }
 double oapiGetTimeAcceleration() { return g_accel; }
-bool ComputeGroundElapsedTime(VESSEL *, double &out) { if (!g_supported) return false; out = g_met; return true; }
+bool ComputeGroundElapsedTime(VESSEL *, double &out)
+{
+	if (g_useMockSources)
+		return ResolveGroundElapsedTime(g_mockSources, out);
+	if (!g_supported) return false;
+	out = g_met;
+	return true;
+}
 // Same formatting as GroundElapsedTimeCommon.cpp (that file needs NASSP headers).
 void FormatGroundElapsedTimeHMS(double t, char *b, int n)
 {
@@ -299,6 +310,147 @@ int main()
 	GroundElapsedTimeExportStep(7);
 	ReadMsg(p, buf, n);
 	CHECK(!strcmp(buf, "3:15:24\n10\n"), "reset restores raw '%s'", buf);
+
+	// Unit tests for ResolveGroundElapsedTime precedence logic
+	{
+		double out = 0.0;
+		GroundElapsedTimeSources src = {};
+
+		// 1. Supported S-IVB focus uses its own time directly (ignores MCC even if positive)
+		src = {};
+		src.focusSupported = true;
+		src.focusIsSivb = true;
+		src.focusTime = 1234.0;
+		src.hasMcc = true;
+		src.mccTime = 5678.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 1234.0, "supported SIVB ignores MCC");
+
+		// 2. Supported Saturn/LEM/Crawler uses MCC when positive
+		src = {};
+		src.focusSupported = true;
+		src.focusTime = 100.0;
+		src.hasMcc = true;
+		src.mccTime = 500.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 500.0, "supported spacecraft prefers positive MCC");
+
+		// 3. Supported Saturn/LEM/Crawler falls back to focus when MCC is <= 0 or absent
+		src.mccTime = 0.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 100.0, "supported spacecraft falls back to focus when MCC <= 0");
+		src.hasMcc = false;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 100.0, "supported spacecraft uses focus when MCC absent");
+
+		// 4. Unsupported focus (e.g. EVA astronaut Pete Conrad) falls back to positive MCC
+		src = {};
+		src.focusSupported = false;
+		src.hasMcc = true;
+		src.mccTime = 414000.0; // ~115 hrs
+		src.hasLem = true;
+		src.lemTime = 414000.0;
+		src.hasSaturn = true;
+		src.saturnTime = 414000.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 414000.0, "unsupported EVA fallback prefers positive MCC");
+
+		// 5. Unsupported focus falls back to active LEM when MCC absent or <= 0
+		src.hasMcc = false;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 414000.0, "unsupported EVA fallback uses LEM when MCC absent");
+		src.hasMcc = true;
+		src.mccTime = 0.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 414000.0, "unsupported EVA fallback uses LEM when MCC <= 0");
+
+		// 6. Unsupported focus falls back to active Saturn when LEM is absent
+		src.hasLem = false;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 414000.0, "unsupported EVA fallback uses Saturn when LEM absent");
+
+		// 7. Unsupported focus falls back to pre-launch countdown (negative time)
+		src = {};
+		src.focusSupported = false;
+		src.hasSaturn = true;
+		src.saturnTime = -3600.0;
+		src.hasCrawler = true;
+		src.crawlerTime = -3600.0;
+		src.hasMcc = true;
+		src.mccTime = 0.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == -3600.0, "unsupported focus fallback uses pre-launch countdown");
+
+		// 8. Unsupported focus falls back to uncrewed S-IVB if it is the only supported fallback
+		src = {};
+		src.focusSupported = false;
+		src.hasSivb = true;
+		src.sivbTime = 8000.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 8000.0, "unsupported focus fallback uses SIVB when only source");
+
+		// 9. S-IVB is NOT used if Saturn/Crawler/LEM or positive MCC is available
+		src.hasLem = true;
+		src.lemTime = 9000.0;
+		CHECK(ResolveGroundElapsedTime(src, out) && out == 9000.0, "unsupported focus prefers LEM over SIVB");
+
+		// 10. Unsupported focus returns false when no supported sources exist (e.g. default Orbiter vessel)
+		src = {};
+		src.focusSupported = false;
+		CHECK(!ResolveGroundElapsedTime(src, out), "unsupported vessel with no sources returns false");
+
+		// 11. Unsupported focus returns false when MCC is <= 0 and no spacecraft exists (no false zero)
+		src = {};
+		src.focusSupported = false;
+		src.hasMcc = true;
+		src.mccTime = 0.0;
+		CHECK(!ResolveGroundElapsedTime(src, out), "unsupported vessel with only zero MCC returns false");
+
+		// 12. Corrupted / uninitialized MINUS_INFINITY times are rejected
+		src = {};
+		src.focusSupported = false;
+		src.hasSivb = true;
+		src.sivbTime = -1000000000.0; // MINUS_INFINITY
+		CHECK(!ResolveGroundElapsedTime(src, out), "MINUS_INFINITY time rejected");
+	}
+
+	// Test pipe behavior with fallback when focus changes to EVA astronaut
+	{
+		Drain(p);
+		g_useMockSources = true;
+		g_focusVessel = &g_vessel;
+		// Scenario starts focused on LM Intrepid at GET 3:15:24 (11724 s)
+		g_mockSources = {};
+		g_mockSources.focusSupported = true;
+		g_mockSources.focusTime = 11724.0;
+		g_mockSources.hasLem = true;
+		g_mockSources.lemTime = 11724.0;
+		g_accel = 1.0;
+
+		GroundElapsedTimeExportStep(10);
+		ReadMsg(p, buf, n);
+		CHECK(!strcmp(buf, "3:15:24\n1\n"), "LM focus initial GET '%s'", buf);
+
+		// Focus changes to EVA astronaut (unsupported), but LM remains in scenario
+		g_focusVessel = &g_astronautVessel;
+		g_mockSources.focusSupported = false;
+		g_mockSources.focusTime = 0.0;
+		GroundElapsedTimeExportStep(11);
+		ReadMsg(p, buf, n);
+		CHECK(!strcmp(buf, "3:15:24\n1\n"), "EVA astronaut focus falls back to LM GET '%s'", buf);
+
+		// Time advances 1 s while still focused on EVA astronaut
+		g_mockSources.lemTime = 11725.0;
+		GroundElapsedTimeExportStep(12);
+		ReadMsg(p, buf, n);
+		CHECK(!strcmp(buf, "3:15:25\n1\n"), "EVA astronaut focus advances with fallback '%s'", buf);
+
+		// Focus switches to unsupported vessel with NO fallback sources
+		g_mockSources.hasLem = false;
+		GroundElapsedTimeExportStep(13);
+		ReadMsg(p, buf, n);
+		CHECK(!strcmp(buf, "0:00:00\n1\n"), "Unsupported vessel without fallback gives 0:00:00 '%s'", buf);
+
+		// Focus switches back to LM
+		g_focusVessel = &g_vessel;
+		g_mockSources.focusSupported = true;
+		g_mockSources.focusTime = 11726.0;
+		GroundElapsedTimeExportStep(14);
+		ReadMsg(p, buf, n);
+		CHECK(!strcmp(buf, "3:15:26\n1\n"), "Return to supported focus restores GET '%s'", buf);
+
+		g_useMockSources = false;
+	}
 
 	CloseHandle(p);
 	GroundElapsedTimeExportExit();

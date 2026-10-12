@@ -24,7 +24,12 @@ read while a NASSP simulation is running. It no longer writes any file.
 
 - **Source of GET:** the focused vessel, using NASSP's logic: S-IVB time is
   preferred when focused; otherwise MCC time is used, with Saturn, Crawler and
-  LEM as pre-liftoff fallbacks. Unsupported vessels give `0:00:00`.
+  LEM as pre-liftoff fallbacks. When focus changes to an unsupported vessel
+  (such as an astronaut on EVA), GET safely falls back to an active supported
+  NASSP source in the scenario: positive MCC time first, then available
+  Saturn/Crawler/LEM spacecraft, and finally an uncrewed S-IVB if it is the only
+  supported fallback. Only if no appropriate supported spacecraft or MCC source
+  exists does it give `0:00:00` (unsupported vessel).
 - **Cadence (event-driven):** a message is sent when the *displayed* GET
   (whole seconds, truncated toward zero) changes, not at a fixed rate. If one
   simulation step crosses several displayed seconds (e.g. a 60x frame), one

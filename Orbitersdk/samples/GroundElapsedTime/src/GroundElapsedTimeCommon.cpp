@@ -57,42 +57,45 @@ using namespace nassp;
 
 bool ComputeGroundElapsedTime(VESSEL *vessel, double &outSeconds)
 {
-	if (!vessel)
-		return false;
+	GroundElapsedTimeSources sources = {};
 
 	// Work out what kind of NASSP vessel we've been given, exactly the way
 	// ProjectApolloMFD's constructor does it: by comparing the vessel's
 	// Orbiter class name (utils::IsVessel checks VESSEL::GetClassName()
 	// against NASSP's known class names).
-	Saturn *saturn = NULL;
-	LEM *lem = NULL;
-	SIVB *sivb = NULL;
-	Crawler *crawler = NULL;
-	bool supported = false;
+	Saturn *focusSaturn = NULL;
+	LEM *focusLem = NULL;
+	SIVB *focusSivb = NULL;
+	Crawler *focusCrawler = NULL;
 
-	if (utils::IsVessel(vessel, utils::Saturn))
+	if (vessel)
 	{
-		saturn = (Saturn *)vessel;
-		supported = true;
+		if (utils::IsVessel(vessel, utils::Saturn))
+		{
+			focusSaturn = (Saturn *)vessel;
+			sources.focusSupported = true;
+			sources.focusTime = focusSaturn->GetMissionTime();
+		}
+		else if (utils::IsVessel(vessel, utils::LEM))
+		{
+			focusLem = (LEM *)vessel;
+			sources.focusSupported = true;
+			sources.focusTime = focusLem->GetMissionTime();
+		}
+		else if (utils::IsVessel(vessel, utils::SIVB))
+		{
+			focusSivb = (SIVB *)vessel;
+			sources.focusSupported = true;
+			sources.focusIsSivb = true;
+			sources.focusTime = focusSivb->GetMissionTime();
+		}
+		else if (utils::IsVessel(vessel, utils::Crawler))
+		{
+			focusCrawler = (Crawler *)vessel;
+			sources.focusSupported = true;
+			sources.focusTime = focusCrawler->GetMissionTime();
+		}
 	}
-	else if (utils::IsVessel(vessel, utils::LEM))
-	{
-		lem = (LEM *)vessel;
-		supported = true;
-	}
-	else if (utils::IsVessel(vessel, utils::SIVB))
-	{
-		sivb = (SIVB *)vessel;
-		supported = true;
-	}
-	else if (utils::IsVessel(vessel, utils::Crawler))
-	{
-		crawler = (Crawler *)vessel;
-		supported = true;
-	}
-
-	if (!supported)
-		return false;
 
 	// Look for the simulated Mission Control vessel, exactly the way
 	// ProjectApolloMFD's constructor does: by its fixed scenario name
@@ -111,31 +114,94 @@ bool ComputeGroundElapsedTime(VESSEL *vessel, double &outSeconds)
 		}
 	}
 
-	// This is the exact same rule ProjectApolloMFD uses in its "Draw
-	// mission time" block:
-	double mt = 0.0;
-
-	if (sivb)
-	{
-		// S-IVB stages aren't crewed, so there's no reason to prefer
-		// Mission Control's clock over the stage's own mission time.
-		mt = sivb->GetMissionTime();
-	}
-	else
+	// If the focused vessel is supported, preserve existing behavior
+	if (sources.focusSupported)
 	{
 		if (mcc)
-			mt = mcc->GetMissionTime();
-
-		if (mt <= 0.0) // Mission time from MCC might be nonsense before liftoff
 		{
-			if (saturn) mt = saturn->GetMissionTime();
-			if (crawler) mt = crawler->GetMissionTime();
-			if (lem) mt = lem->GetMissionTime();
+			sources.hasMcc = true;
+			sources.mccTime = mcc->GetMissionTime();
+		}
+		return ResolveGroundElapsedTime(sources, outSeconds);
+	}
+
+	// Focus is unsupported (e.g. an EVA astronaut): search the active Orbiter scenario
+	// for supported NASSP vehicle(s) and compute mission time from an appropriate
+	// supported source, without ever casting an unsupported vessel.
+	Saturn *fallbackSaturn = NULL;
+	LEM *fallbackLem = NULL;
+	Crawler *fallbackCrawler = NULL;
+	SIVB *fallbackSivb = NULL;
+
+	DWORD vesselCount = oapiGetVesselCount();
+	for (DWORD i = 0; i < vesselCount; ++i)
+	{
+		OBJHANDLE hV = oapiGetVesselByIndex((int)i);
+		if (!hV)
+			continue;
+		VESSEL *v = oapiGetVesselInterface(hV);
+		if (!v)
+			continue;
+
+		if (utils::IsVessel(v, utils::Saturn))
+		{
+			Saturn *s = (Saturn *)v;
+			if (!fallbackSaturn || (fallbackSaturn->GetMissionTime() <= 0.0 && s->GetMissionTime() > 0.0))
+				fallbackSaturn = s;
+		}
+		else if (utils::IsVessel(v, utils::LEM))
+		{
+			LEM *l = (LEM *)v;
+			if (!fallbackLem || (fallbackLem->GetMissionTime() <= 0.0 && l->GetMissionTime() > 0.0))
+				fallbackLem = l;
+		}
+		else if (utils::IsVessel(v, utils::Crawler))
+		{
+			Crawler *c = (Crawler *)v;
+			if (!fallbackCrawler)
+				fallbackCrawler = c;
+		}
+		else if (utils::IsVessel(v, utils::SIVB))
+		{
+			SIVB *s = (SIVB *)v;
+			if (!fallbackSivb || (fallbackSivb->GetMissionTime() <= 0.0 && s->GetMissionTime() > 0.0))
+				fallbackSivb = s;
+		}
+		else if (!mcc && utils::IsVessel(v, utils::MCC))
+		{
+			MCCVessel *pMCCVessel = static_cast<MCCVessel *>(v);
+			if (pMCCVessel && pMCCVessel->mcc)
+				mcc = pMCCVessel->mcc;
 		}
 	}
 
-	outSeconds = mt;
-	return true;
+	if (mcc)
+	{
+		sources.hasMcc = true;
+		sources.mccTime = mcc->GetMissionTime();
+	}
+	if (fallbackSaturn)
+	{
+		sources.hasSaturn = true;
+		sources.saturnTime = fallbackSaturn->GetMissionTime();
+	}
+	if (fallbackLem)
+	{
+		sources.hasLem = true;
+		sources.lemTime = fallbackLem->GetMissionTime();
+	}
+	if (fallbackCrawler)
+	{
+		sources.hasCrawler = true;
+		sources.crawlerTime = fallbackCrawler->GetMissionTime();
+	}
+	if (fallbackSivb)
+	{
+		sources.hasSivb = true;
+		sources.sivbTime = fallbackSivb->GetMissionTime();
+	}
+
+	return ResolveGroundElapsedTime(sources, outSeconds);
 }
 
 void FormatGroundElapsedTimeHMS(double totalSeconds, char *buffer, int bufferSize)
