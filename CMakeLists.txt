@@ -30,6 +30,7 @@ add_library(GroundElapsedTime SHARED
     ${SRC}/GroundElapsedTimePlugin.cpp
     ${SRC}/GroundElapsedTimeCommon.cpp
     ${SRC}/GroundElapsedTimeExport.cpp
+    ${SRC}/GroundElapsedTimePause.cpp
     ${SRC}/GroundElapsedTimeOffset.cpp
     ${SRC}/GroundElapsedTimeMFD.cpp)
 
@@ -62,8 +63,5 @@ set_target_properties(GroundElapsedTime PROPERTIES
 # Optional: pipe protocol test harness (real exporter code, stubbed Orbiter API).
 option(GET_BUILD_PIPE_HARNESS "Build tests/pipe_harness" OFF)
 if(GET_BUILD_PIPE_HARNESS)
-    add_executable(pipe_harness tests/pipe_harness/pipe_harness.cpp ${SRC}/GroundElapsedTimeExport.cpp ${SRC}/GroundElapsedTimeOffset.cpp)
-    target_include_directories(pipe_harness PRIVATE tests/pipe_harness/stub ${SRC})
-    target_compile_definitions(pipe_harness PRIVATE _CRT_SECURE_NO_WARNINGS "GET_TEST_PIPE_NAME=\"\\\\\\\\.\\\\pipe\\\\GroundElapsedTimeTest\"")
-    set_target_properties(pipe_harness PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/harness")
+    add_subdirectory(tests/pipe_harness)
 endif()

@@ -61,6 +61,47 @@ read while a NASSP simulation is running. It no longer writes any file.
 - If another program already owns the pipe name, the plugin retries every
   second and does not disturb it.
 
+### Pause state pipe (version 1)
+
+The separate local pipe `\\.\pipe\GroundElapsedTimePauseV1` reports Orbiter's
+actual pause state without relying on simulation steps. The existing GET pipe
+and its two-line messages are unchanged. This pipe supports one local client;
+the server rejects remote clients and retries creation if the name is busy.
+
+Each message-mode write is an ASCII line `1 <sequence> <paused>\n`, for example
+`1 42 1\n`. The first field is the protocol version, the second is an unsigned
+64-bit decimal transition counter, and the third is `1` for paused or `0` for
+running. The counter starts at zero when the plugin loads and increments once
+per actual change; repeated values are heartbeats, not new transitions.
+There is no timestamp or sub-second GET in this protocol. Delivery is
+asynchronous, so receipt time is not the exact transition time and messages
+on the two independent pipes have no shared ordering.
+
+On every connection the first message is a snapshot of the latest state and
+counter, sampled under the same lock as transitions; earlier queued transitions
+are discarded. Initial state is read from `oapiGetPause` when the plugin loads;
+subsequent updates come from Orbiter's `opcPause` callback, including while
+paused and no simulation steps occur. Changes after the connection snapshot
+are delivered in order, and the last sent state is repeated approximately
+every 250 ms when idle to detect a departed client. A stalled write is dropped
+after approximately one second. A bounded 256-transition queue prevents the
+simulation thread from waiting on pipe I/O. If it overflows, the server
+disconnects the client rather than silently dropping transitions; any unread
+pipe data is discarded, and the next connection starts with the latest snapshot.
+Already received transitions cannot be retracted. There is no replay across
+connections. Delivery latency is not guaranteed and may include a pending
+write or operating-system buffering.
+
+Connect as a read-only named-pipe client and retry when the pipe is absent,
+busy, or a read fails. Set pause state to **unknown** on disconnect, malformed
+data, or a sequence gap; reconnect and trust the new initial snapshot rather
+than treating unavailable as paused or running. The counter may restart at
+zero after plugin reload; treat each connection's first message as a new
+baseline. Consume continuously, process each complete line (byte-mode reads
+may split or combine messages), ignore duplicate sequence numbers, and expect
+the next distinct sequence to be exactly one greater. Shutdown closes the pipe;
+it does not publish a final paused or running value.
+
 ### Try it (PowerShell)
 
 With Orbiter running a scenario, run from this folder:

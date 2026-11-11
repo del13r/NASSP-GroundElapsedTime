@@ -3,6 +3,7 @@
 Addon that exports NASSP Project Apollo Ground Elapsed Time and Orbiter time acceleration on the local named pipe `\\.\pipe\GroundElapsedTime`.
 Event-driven: a message is published for every displayed GET second crossed (in order, also across 60x frames and backward steps), immediately on acceleration changes, plus a 1 s heartbeat.
 A **GET Delay** MFD page can shift the published GET by a signed offset (output = raw GET + offset). Mark the simulation event and when it is heard in the transcript to calculate a correction that APL adds to the current offset (SET enters an absolute offset) (see the addon README).
+Orbiter pause and resume state is published separately on `\\.\pipe\GroundElapsedTimePauseV1`; see the addon README for the versioned protocol and reconnect rules.
 
 ## Build (x64 only: OpenOrbiter 2024 + NASSP 9) - CMake
 
@@ -50,6 +51,14 @@ stubbed Orbiter API):
     cmake -S . -B build-x64 -DGET_BUILD_PIPE_HARNESS=ON
     cmake --build build-x64 --config Release --target pipe_harness
     .\build-x64\harness\Release\pipe_harness.exe
+    .\build-x64\harness\Release\pause_harness.exe
+
+The harnesses can also be built without the Orbiter/NASSP dependencies:
+
+    cmake -S tests\pipe_harness -B build-x64\pipe-tests -A x64
+    cmake --build build-x64\pipe-tests --config Release
+    .\build-x64\pipe-tests\harness\Release\pipe_harness.exe
+    .\build-x64\pipe-tests\harness\Release\pause_harness.exe
 
 Status: builds and passes the stub pipe test; not yet tested inside a running
 OpenOrbiter 2024 / NASSP 9 session.

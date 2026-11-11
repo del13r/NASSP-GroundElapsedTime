@@ -11,17 +11,25 @@
 #include "Orbitersdk.h"
 #include "GroundElapsedTimeExport.h"
 #include "GroundElapsedTimeMFD.h"
+#include "GroundElapsedTimePause.h"
 
 DLLCLBK void opcDLLInit(HINSTANCE hDLL)
 {
 	GroundElapsedTimeExportInit();
+	GroundElapsedTimePauseInit(oapiGetPause());
 	GroundElapsedTimeMFDInit(hDLL);
 }
 
 DLLCLBK void opcDLLExit(HINSTANCE hDLL)
 {
 	GroundElapsedTimeMFDExit();
+	GroundElapsedTimePauseExit();
 	GroundElapsedTimeExportExit();
+}
+
+DLLCLBK void opcPause(bool paused)
+{
+	GroundElapsedTimePauseChanged(paused);
 }
 
 DLLCLBK void opcPreStep(double simt, double simdt, double mjd)
