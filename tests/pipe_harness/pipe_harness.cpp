@@ -454,6 +454,21 @@ int main()
 
 	CloseHandle(p);
 	GroundElapsedTimeExportExit();
+	GroundElapsedTimeExportInit();
+	p = INVALID_HANDLE_VALUE;
+	for (int i = 0; i < 100 && p == INVALID_HANDLE_VALUE; ++i)
+	{
+		p = CreateFileA("\\\\.\\pipe\\GroundElapsedTimeTest", GENERIC_READ | FILE_WRITE_ATTRIBUTES, 0, NULL, OPEN_EXISTING, 0, NULL);
+		if (p == INVALID_HANDLE_VALUE) Sleep(20);
+	}
+	CHECK(p != INVALID_HANDLE_VALUE, "reconnect after simulation restart");
+	if (p != INVALID_HANDLE_VALUE)
+	{
+		SetNamedPipeHandleState(p, &mode, NULL, NULL);
+		Expect(p, "0:00:00\n1\n", "new simulation does not publish previous session");
+		CloseHandle(p);
+	}
+	GroundElapsedTimeExportExit();
 	printf(g_fail ? "RESULT: FAILED\n" : "RESULT: PASSED\n");
 	return g_fail ? 1 : 0;
 }

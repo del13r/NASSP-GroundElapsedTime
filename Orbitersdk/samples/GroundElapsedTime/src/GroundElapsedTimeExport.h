@@ -14,10 +14,10 @@
 #ifndef __GROUNDELAPSEDTIMEEXPORT_H
 #define __GROUNDELAPSEDTIMEEXPORT_H
 
-// Starts the background pipe server thread (called from opcDLLInit).
+// Starts the background pipe server thread at simulation start.
 void GroundElapsedTimeExportInit();
 
-// Stops the pipe server thread and releases all handles (opcDLLExit).
+// Stops the pipe server thread and releases all handles at simulation end.
 void GroundElapsedTimeExportExit();
 
 // Called every simulation step from the Orbiter thread. Never blocks on pipe

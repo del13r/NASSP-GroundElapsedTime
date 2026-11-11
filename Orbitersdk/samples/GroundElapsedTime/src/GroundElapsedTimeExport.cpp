@@ -213,9 +213,12 @@ static DWORD WINAPI PipeThread(LPVOID)
 				if (WaitForMultipleObjects(2, waits, FALSE, INFINITE) != WAIT_OBJECT_0)
 				{
 					CancelIoEx(pipe, &ov);
+					DWORD ignored;
+					GetOverlappedResult(pipe, &ov, &ignored, TRUE);
 					break;
 				}
-				connected = true;
+				DWORD ignored;
+				connected = GetOverlappedResult(pipe, &ov, &ignored, FALSE) != FALSE;
 			}
 		}
 
@@ -276,6 +279,8 @@ void GroundElapsedTimeExportInit()
 	g_haveBase = false;
 	g_baseVessel = NULL;
 	g_baseAccel[0] = '\0';
+	strcpy(g_message, "0:00:00\n1\n");
+	g_messageLen = (DWORD)strlen(g_message);
 	g_queueHead = 0;
 	g_queueCount = 0;
 	g_droppedCount = 0;

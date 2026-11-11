@@ -52,8 +52,9 @@ read while a NASSP simulation is running. It no longer writes any file.
   gaps but always ends on the current value. Read continuously.
 ### Lifecycle and reconnect
 
-- The pipe appears when Orbiter loads the plugin and is removed when it exits.
-  If it does not exist yet, keep retrying the connection.
+- The pipes appear when a simulation session starts and close when it ends,
+  even if Orbiter remains at the launchpad. If a pipe does not exist yet,
+  keep retrying the connection.
 - One client at a time. If you disconnect (or stop reading for more than
   about 1 second so the write stalls), the plugin drops that connection and
   waits for the next client. If Orbiter exits, your read ends/fails; reconnect
@@ -71,7 +72,7 @@ the server rejects remote clients and retries creation if the name is busy.
 Each message-mode write is an ASCII line `1 <sequence> <paused>\n`, for example
 `1 42 1\n`. The first field is the protocol version, the second is an unsigned
 64-bit decimal transition counter, and the third is `1` for paused or `0` for
-running. The counter starts at zero when the plugin loads and increments once
+running. The counter starts at zero when a simulation starts and increments once
 per actual change; repeated values are heartbeats, not new transitions.
 There is no timestamp or sub-second GET in this protocol. Delivery is
 asynchronous, so receipt time is not the exact transition time and messages
@@ -79,8 +80,8 @@ on the two independent pipes have no shared ordering.
 
 On every connection the first message is a snapshot of the latest state and
 counter, sampled under the same lock as transitions; earlier queued transitions
-are discarded. Initial state is read from `oapiGetPause` when the plugin loads;
-subsequent updates come from Orbiter's `opcPause` callback, including while
+are discarded. Initial state is read from `oapiGetPause` when the simulation
+starts; subsequent updates come from Orbiter's `clbkPause` callback, including while
 paused and no simulation steps occur. Changes after the connection snapshot
 are delivered in order, and the last sent state is repeated approximately
 every 250 ms when idle to detect a departed client. A stalled write is dropped
@@ -96,7 +97,7 @@ Connect as a read-only named-pipe client and retry when the pipe is absent,
 busy, or a read fails. Set pause state to **unknown** on disconnect, malformed
 data, or a sequence gap; reconnect and trust the new initial snapshot rather
 than treating unavailable as paused or running. The counter may restart at
-zero after plugin reload; treat each connection's first message as a new
+zero after a new simulation session; treat each connection's first message as a new
 baseline. Consume continuously, process each complete line (byte-mode reads
 may split or combine messages), ignore duplicate sequence numbers, and expect
 the next distinct sequence to be exactly one greater. Shutdown closes the pipe;

@@ -4,6 +4,9 @@
 #include <string.h>
 
 static int failures;
+static HANDLE connectPending, writePending;
+void PauseTestConnectPending() { SetEvent(connectPending); }
+void PauseTestWritePending() { SetEvent(writePending); }
 #define CHECK(c, msg) do { if (!(c)) { printf("FAIL: %s\n", msg); ++failures; } } while (0)
 
 static HANDLE Connect()
@@ -58,6 +61,9 @@ static bool ReadSequence(HANDLE pipe, unsigned long long expected, int expectedP
 
 int main()
 {
+	connectPending = CreateEvent(NULL, TRUE, FALSE, NULL);
+	writePending = CreateEvent(NULL, TRUE, FALSE, NULL);
+	if (!connectPending || !writePending) return 1;
 	GroundElapsedTimePauseInit(true);
 	HANDLE pipe = Connect();
 	CHECK(pipe != INVALID_HANDLE_VALUE, "connect");
@@ -135,6 +141,36 @@ int main()
 		else GroundElapsedTimePauseExit();
 	}
 	else GroundElapsedTimePauseExit();
+
+	ResetEvent(connectPending);
+	GroundElapsedTimePauseInit(false);
+	CHECK(WaitForSingleObject(connectPending, 2000) == WAIT_OBJECT_0,
+		"connect operation actually pending");
+	ULONGLONG before = GetTickCount64();
+	GroundElapsedTimePauseExit();
+	CHECK(GetTickCount64() - before < 2000, "shutdown cancels pending connect");
+
+	ResetEvent(writePending);
+	GroundElapsedTimePauseInit(false);
+	pipe = Connect();
+	CHECK(pipe != INVALID_HANDLE_VALUE, "connect stalled client");
+	if (pipe != INVALID_HANDLE_VALUE)
+	{
+		for (int i = 0; i < 5000 && WaitForSingleObject(writePending, 0) != WAIT_OBJECT_0; ++i)
+		{
+			GroundElapsedTimePauseChanged((i & 1) == 0);
+			Sleep(1);
+		}
+		CHECK(WaitForSingleObject(writePending, 0) == WAIT_OBJECT_0,
+			"write operation actually pending");
+		before = GetTickCount64();
+		GroundElapsedTimePauseExit();
+		CHECK(GetTickCount64() - before < 2000, "shutdown cancels stalled write");
+		CloseHandle(pipe);
+	}
+	else GroundElapsedTimePauseExit();
+	CloseHandle(connectPending);
+	CloseHandle(writePending);
 	printf(failures ? "RESULT: FAILED\n" : "RESULT: PASSED\n");
 	return failures ? 1 : 0;
 }

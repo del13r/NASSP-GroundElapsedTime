@@ -52,6 +52,7 @@ stubbed Orbiter API):
     cmake --build build-x64 --config Release --target pipe_harness
     .\build-x64\harness\Release\pipe_harness.exe
     .\build-x64\harness\Release\pause_harness.exe
+    .\build-x64\harness\Release\lifecycle_harness.exe
 
 The harnesses can also be built without the Orbiter/NASSP dependencies:
 
@@ -59,6 +60,7 @@ The harnesses can also be built without the Orbiter/NASSP dependencies:
     cmake --build build-x64\pipe-tests --config Release
     .\build-x64\pipe-tests\harness\Release\pipe_harness.exe
     .\build-x64\pipe-tests\harness\Release\pause_harness.exe
+    .\build-x64\pipe-tests\harness\Release\lifecycle_harness.exe
 
 Status: builds and passes the stub pipe test; not yet tested inside a running
 OpenOrbiter 2024 / NASSP 9 session.

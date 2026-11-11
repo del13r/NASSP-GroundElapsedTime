@@ -17,6 +17,11 @@ static int g_head, g_count;
 static bool g_overflow;
 static HANDLE g_stop, g_update, g_thread;
 
+#ifdef GET_TEST_PAUSE_IO
+extern void PauseTestConnectPending();
+extern void PauseTestWritePending();
+#endif
+
 static bool WriteState(HANDLE pipe, HANDLE event, const State &state)
 {
 	char text[64];
@@ -30,6 +35,9 @@ static bool WriteState(HANDLE pipe, HANDLE event, const State &state)
 	{
 		if (GetLastError() != ERROR_IO_PENDING)
 			return false;
+#ifdef GET_TEST_PAUSE_IO
+		PauseTestWritePending();
+#endif
 		HANDLE waits[] = { event, g_stop };
 		if (WaitForMultipleObjects(2, waits, FALSE, 1000) != WAIT_OBJECT_0)
 		{
@@ -80,6 +88,9 @@ static DWORD WINAPI PausePipeThread(LPVOID)
 				connected = true;
 			else if (error == ERROR_IO_PENDING)
 			{
+#ifdef GET_TEST_PAUSE_IO
+				PauseTestConnectPending();
+#endif
 				HANDLE waits[] = { connectEvent, g_stop };
 				if (WaitForMultipleObjects(2, waits, FALSE, INFINITE) != WAIT_OBJECT_0)
 				{
