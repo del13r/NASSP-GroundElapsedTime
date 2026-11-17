@@ -12,6 +12,7 @@
 #include "GroundElapsedTimeExport.h"
 #include "GroundElapsedTimeMFD.h"
 #include "GroundElapsedTimePause.h"
+#include "GroundElapsedTimeHttp.h"
 
 class GroundElapsedTimeModule : public oapi::Module
 {
@@ -20,24 +21,38 @@ public:
 
 	void clbkSimulationStart(RenderMode) override
 	{
+		GroundElapsedTimeHttpInit(oapiGetPause());
 		GroundElapsedTimeExportInit();
 		GroundElapsedTimePauseInit(oapiGetPause());
+		GroundElapsedTimeExportHttpSample(oapiGetSimTime());
 	}
 
 	void clbkSimulationEnd() override
 	{
+		GroundElapsedTimeHttpExit();
 		GroundElapsedTimePauseExit();
 		GroundElapsedTimeExportExit();
 	}
 
 	void clbkPreStep(double simt, double, double) override
 	{
+		ReportHttpError();
 		GroundElapsedTimeExportStep(simt);
 	}
 
 	void clbkPause(bool paused) override
 	{
+		ReportHttpError();
+		GroundElapsedTimeHttpPause(paused);
 		GroundElapsedTimePauseChanged(paused);
+	}
+
+private:
+	void ReportHttpError()
+	{
+		int error = GroundElapsedTimeHttpTakeError();
+		if (error)
+			oapiWriteLogV("GroundElapsedTime HTTP: server error %d; check port 8765, retrying where possible", error);
 	}
 };
 

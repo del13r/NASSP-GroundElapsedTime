@@ -27,6 +27,9 @@ void GroundElapsedTimeExportExit();
 // once per second of wall-clock time when nothing else was published.
 void GroundElapsedTimeExportStep(double simt);
 
+// Capture the initial HTTP snapshot even if a scenario starts paused.
+void GroundElapsedTimeExportHttpSample(double simt);
+
 // Number of queued messages dropped because the bounded queue was full
 // (diagnostics / tests).
 unsigned long GroundElapsedTimeExportDroppedCount();

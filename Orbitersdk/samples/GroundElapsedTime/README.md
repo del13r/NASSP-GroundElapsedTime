@@ -1,9 +1,55 @@
 # GroundElapsedTime addon
 
 This addon reads NASSP's Project Apollo mission-time logic and publishes the
-current Ground Elapsed Time (GET) and Orbiter's time acceleration on a local
-Windows named pipe, for another program (transcript tool, script, overlay) to
-read while a NASSP simulation is running. It no longer writes any file.
+current Ground Elapsed Time (GET), acceleration and pause state through local
+Windows named pipes and a read-only HTTP endpoint while a simulation runs.
+The browser extension uses HTTP independently of the speech application.
+
+## Apollo in Real Time browser sync
+
+1. Build and install the plugin as described below, then enable it in Orbiter.
+2. In Chrome or Edge, open `chrome://extensions` or `edge://extensions`,
+   enable Developer mode, choose **Load unpacked**, and select this repository's
+   `browser_extension` folder.
+3. Open an Apollo 11, 13 or 17 page at `https://apolloinrealtime.org/`.
+   A badge reports the sync state. The browser and Orbiter may start in either
+   order. While Orbiter is paused, the page is paused; at other than 1x it
+   continues playing without sync and seeks to Orbiter when 1x resumes.
+   When the plugin or a valid snapshot is unavailable, the page is held.
+
+Click the extension's toolbar icon to set the **site offset in seconds**.
+It is saved in that browser's extension storage and added to the published GET
+only for the website. It does not change either pipe or speech timing. The
+GET Delay MFD offset, if applied, is already included in the published GET;
+the site offset is additional.
+
+To migrate an old NASSP GET Speech site offset, open
+`%APPDATA%\ApolloGetSpeaker\config.json` and copy the numeric
+`site_offset_seconds` value into the extension's offset field. An absent value
+means zero. Migration is manual; the extension never reads or changes the
+speech application's files.
+
+The old speech bridge and this plugin cannot both own port 8765. If another
+program occupies it, the plugin reports the socket error through Windows debug
+output and, on the next simulation step or pause callback, Orbiter's log. It
+retries once per second until the port is free or the simulation ends. Stop
+the old bridge before relying on the extension.
+
+### HTTP snapshot
+
+`GET http://127.0.0.1:8765/` returns JSON with `get` (GET seconds or null),
+`accel` (time acceleration), `running` (available, unpaused and approximately
+1x), `paused` (boolean or null), `seq` (resync generation) and `offset` (zero;
+the extension adds its separately stored site offset). The GET includes any
+GET Delay MFD offset. A fresh fractional simulation sample is interpolated at
+1x using monotonic wall time; at other accelerations the last actual sample is
+returned. A running sample older than 1.5 seconds, an unsupported source, or a
+resume awaiting a fresh sample is unavailable (`get` and `paused` are null).
+An observed pause freezes the last valid value until resume. Jumps, offset or
+focus changes, recovery, pause/resume, and returning to 1x cause resyncs.
+The server stops when the simulation ends, never consumes the single-client
+pipes, accepts only the root GET and the `127.0.0.1:8765` Host, and binds only
+to loopback. Socket work is bounded and occurs off the simulation thread.
 
 ## Pipe interface
 
@@ -211,6 +257,8 @@ Building does not touch any Orbiter installation. Copy
 - `src\GroundElapsedTimeCommon.cpp/.h` - shared NASSP mission-time lookup and
   formatting
 - `src\GroundElapsedTimeExport.cpp/.h` - named-pipe server (worker thread)
+- `src\GroundElapsedTimeHttp.cpp/.h` - synchronized browser snapshot and HTTP worker
+- `..\..\..\browser_extension` - Apollo in Real Time browser sync and site offset
 - `Read-GroundElapsedTime.ps1` - sample pipe client
 - `..\..\..\CMakeLists.txt`, `..\..\..\setup-deps-x64.ps1` - x64 build and
   dependency setup at the repository root

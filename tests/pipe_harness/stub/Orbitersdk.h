@@ -21,4 +21,6 @@ public:
 }
 void oapiRegisterModule(oapi::Module *);
 bool oapiGetPause();
+double oapiGetSimTime();
+void oapiWriteLogV(const char *, ...);
 #endif

@@ -4,6 +4,9 @@ Addon that exports NASSP Project Apollo Ground Elapsed Time and Orbiter time acc
 Event-driven: a message is published for every displayed GET second crossed (in order, also across 60x frames and backward steps), immediately on acceleration changes, plus a 1 s heartbeat.
 A **GET Delay** MFD page can shift the published GET by a signed offset (output = raw GET + offset). Mark the simulation event and when it is heard in the transcript to calculate a correction that APL adds to the current offset (SET enters an absolute offset) (see the addon README).
 Orbiter pause and resume state is published separately on `\\.\pipe\GroundElapsedTimePauseV1`; see the addon README for the versioned protocol and reconnect rules.
+The plugin also serves a read-only localhost snapshot for the included
+`browser_extension`, independently of NASSP GET Speech. See the addon README
+for setup, offset migration, and the HTTP interface.
 
 ## Build (x64 only: OpenOrbiter 2024 + NASSP 9) - CMake
 
@@ -61,6 +64,12 @@ The harnesses can also be built without the Orbiter/NASSP dependencies:
     .\build-x64\pipe-tests\harness\Release\pipe_harness.exe
     .\build-x64\pipe-tests\harness\Release\pause_harness.exe
     .\build-x64\pipe-tests\harness\Release\lifecycle_harness.exe
+    .\build-x64\pipe-tests\harness\Release\http_harness.exe
+    .\build-x64\pipe-tests\harness\Release\integration_harness.exe
+
+The browser harness requires Python, pytest, and Chrome:
+
+    py -m pytest -q tests\test_browser_pause.py tests\test_extension_settings.py
 
 Status: builds and passes the stub pipe test; not yet tested inside a running
 OpenOrbiter 2024 / NASSP 9 session.

@@ -30,6 +30,7 @@ add_library(GroundElapsedTime SHARED
     ${SRC}/GroundElapsedTimePlugin.cpp
     ${SRC}/GroundElapsedTimeCommon.cpp
     ${SRC}/GroundElapsedTimeExport.cpp
+    ${SRC}/GroundElapsedTimeHttp.cpp
     ${SRC}/GroundElapsedTimePause.cpp
     ${SRC}/GroundElapsedTimeOffset.cpp
     ${SRC}/GroundElapsedTimeMFD.cpp)
@@ -51,7 +52,7 @@ target_include_directories(GroundElapsedTime PRIVATE
 
 target_compile_definitions(GroundElapsedTime PRIVATE _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_DEPRECATE)
 target_link_directories(GroundElapsedTime PRIVATE ${GET_ORBITERSDK_DIR}/lib)
-target_link_libraries(GroundElapsedTime PRIVATE Orbiter Orbitersdk User32 Gdi32)
+target_link_libraries(GroundElapsedTime PRIVATE Orbiter Orbitersdk User32 Gdi32 Ws2_32)
 
 set_target_properties(GroundElapsedTime PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/build-output-x64/Modules/Plugin"

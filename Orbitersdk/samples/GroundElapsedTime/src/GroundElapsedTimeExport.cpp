@@ -27,6 +27,7 @@
 #include "GroundElapsedTimeCommon.h"
 #include "GroundElapsedTimeExport.h"
 #include "GroundElapsedTimeOffset.h"
+#include "GroundElapsedTimeHttp.h"
 
 // The test harness builds this file with its own pipe name so it cannot clash
 // with a running Orbiter.
@@ -310,14 +311,11 @@ void GroundElapsedTimeExportExit()
 	}
 }
 
-void GroundElapsedTimeExportStep(double simt)
+static bool ReadSample(double &mt, bool &supported, VESSEL *&focusVessel)
 {
-	if (!g_thread)
-		return;
-
-	VESSEL *focusVessel = oapiGetFocusInterface();
-	bool supported = false;
-	double mt = 0.0;
+	focusVessel = oapiGetFocusInterface();
+	supported = false;
+	mt = 0.0;
 	if (focusVessel && ComputeGroundElapsedTime(focusVessel, mt))
 	{
 		supported = true;
@@ -326,7 +324,33 @@ void GroundElapsedTimeExportStep(double simt)
 	else
 		mt = 0.0;
 	if (!(mt > -2.0e9 && mt < 2.0e9)) // also rejects NaN
+	{
 		mt = 0.0;
+		return false;
+	}
+	return true;
+}
+
+void GroundElapsedTimeExportHttpSample(double simt)
+{
+	VESSEL *focusVessel;
+	bool supported;
+	double mt;
+	bool finite = ReadSample(mt, supported, focusVessel);
+	GroundElapsedTimeHttpSample(mt, oapiGetTimeAcceleration(), supported && finite,
+		focusVessel, GetOffsetApplied(), simt);
+}
+
+void GroundElapsedTimeExportStep(double simt)
+{
+	VESSEL *focusVessel;
+	bool supported;
+	double mt;
+	bool finite = ReadSample(mt, supported, focusVessel);
+	double acceleration = oapiGetTimeAcceleration();
+	GroundElapsedTimeHttpSample(mt, acceleration, supported && finite, focusVessel, GetOffsetApplied(), simt);
+	if (!g_thread)
+		return;
 
 	// Displayed second: GET is shown truncated toward zero, so consecutive
 	// displayed values are contiguous integers (..., -1, 0, 1, ...) in both signs.
@@ -334,7 +358,7 @@ void GroundElapsedTimeExportStep(double simt)
 	long offset = GetOffsetApplied();
 
 	char accel[64];
-	FormatAcceleration(oapiGetTimeAcceleration(), accel, sizeof(accel));
+	FormatAcceleration(acceleration, accel, sizeof(accel));
 
 	// Anything that is not continuous sim-time progression re-baselines
 	// and publishes only the current value.

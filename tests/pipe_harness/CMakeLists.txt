@@ -8,8 +8,9 @@ if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "Tests require x64")
 endif()
 set(SRC "${CMAKE_CURRENT_LIST_DIR}/../../Orbitersdk/samples/GroundElapsedTime/src")
-add_executable(pipe_harness pipe_harness.cpp ${SRC}/GroundElapsedTimeExport.cpp ${SRC}/GroundElapsedTimeOffset.cpp)
+add_executable(pipe_harness pipe_harness.cpp ${SRC}/GroundElapsedTimeExport.cpp ${SRC}/GroundElapsedTimeOffset.cpp ${SRC}/GroundElapsedTimeHttp.cpp)
 target_include_directories(pipe_harness PRIVATE stub ${SRC})
+target_link_libraries(pipe_harness PRIVATE Ws2_32)
 target_compile_definitions(pipe_harness PRIVATE _CRT_SECURE_NO_WARNINGS "GET_TEST_PIPE_NAME=\"\\\\\\\\.\\\\pipe\\\\GroundElapsedTimeTest\"")
 add_executable(pause_harness pause_harness.cpp ${SRC}/GroundElapsedTimePause.cpp)
 target_include_directories(pause_harness PRIVATE ${SRC})
@@ -17,4 +18,16 @@ target_compile_definitions(pause_harness PRIVATE _CRT_SECURE_NO_WARNINGS GET_TES
 add_executable(lifecycle_harness lifecycle_harness.cpp ${SRC}/GroundElapsedTimePlugin.cpp)
 target_include_directories(lifecycle_harness PRIVATE stub ${SRC})
 target_compile_definitions(lifecycle_harness PRIVATE GET_TEST_MODULE_LIFECYCLE)
-set_target_properties(pipe_harness pause_harness lifecycle_harness PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/harness")
+add_executable(http_harness http_harness.cpp ${SRC}/GroundElapsedTimeHttp.cpp)
+target_include_directories(http_harness PRIVATE ${SRC})
+target_compile_definitions(http_harness PRIVATE GET_HTTP_PORT=18765 _CRT_SECURE_NO_WARNINGS)
+target_link_libraries(http_harness PRIVATE Ws2_32)
+add_executable(integration_harness integration_harness.cpp
+    ${SRC}/GroundElapsedTimePlugin.cpp ${SRC}/GroundElapsedTimeExport.cpp
+    ${SRC}/GroundElapsedTimePause.cpp ${SRC}/GroundElapsedTimeHttp.cpp ${SRC}/GroundElapsedTimeOffset.cpp)
+target_include_directories(integration_harness PRIVATE stub ${SRC})
+target_compile_definitions(integration_harness PRIVATE GET_TEST_MODULE_LIFECYCLE GET_HTTP_PORT=18766 _CRT_SECURE_NO_WARNINGS
+    "GET_TEST_PIPE_NAME=\"\\\\\\\\.\\\\pipe\\\\GroundElapsedTimeIntegrationTest\""
+    "GET_TEST_PAUSE_PIPE_NAME=\"\\\\\\\\.\\\\pipe\\\\GroundElapsedTimePauseIntegrationTest\"")
+target_link_libraries(integration_harness PRIVATE Ws2_32)
+set_target_properties(pipe_harness pause_harness lifecycle_harness http_harness integration_harness PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/harness")

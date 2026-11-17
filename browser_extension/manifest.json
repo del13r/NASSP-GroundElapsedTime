@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "name": "NASSP GroundElapsedTime - Real-Time Sync",
+  "version": "1.0.0",
+  "description": "Keeps apolloinrealtime.org in step with Orbiter's GroundElapsedTime plugin.",
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1:8765/*"],
+  "action": { "default_title": "Site time offset", "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://apolloinrealtime.org/*", "https://www.apolloinrealtime.org/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
